@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Isotherme — comparateur thermique mondial</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#0b0f13;
+    --surface:rgba(18,24,30,0.82);
+    --surface-solid:#12181e;
+    --line:rgba(150,172,188,0.12);
+    --line-strong:rgba(150,172,188,0.22);
+    --text:#e7eef4;
+    --muted:#828f9c;
+    --accent:#5ed3c4;
+    --accent-dim:rgba(94,211,196,0.14);
+    --warm:#e0705f;
+    --cold:#6f9fe0;
+    --display:"Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-font-smoothing:antialiased;overflow:hidden}
+  #map{position:absolute;inset:0;background:var(--bg);z-index:1}
+
+  .leaflet-control-attribution{background:rgba(11,15,19,0.7)!important;color:var(--muted)!important;font-family:var(--mono);font-size:10px;backdrop-filter:blur(6px)}
+  .leaflet-control-attribution a{color:var(--muted)!important}
+  .leaflet-bar a{background:var(--surface-solid)!important;color:var(--text)!important;border-color:var(--line)!important}
+  .leaflet-bar a:hover{background:#1a222a!important}
+  /* l'overlay heatmap doit rester lisse au scaling */
+  .leaflet-image-layer{image-rendering:auto}
+
+  .panel{
+    position:absolute;top:16px;left:16px;z-index:1000;
+    width:min(360px, calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;
+    background:var(--surface);backdrop-filter:blur(18px) saturate(1.1);-webkit-backdrop-filter:blur(18px) saturate(1.1);
+    border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 18px 60px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .panel::-webkit-scrollbar{width:8px}
+  .panel::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:8px}
+
+  .panel-head{padding:16px 18px 12px;border-bottom:1px solid var(--line);position:relative}
+  .panel-head::before{content:"";position:absolute;left:18px;right:18px;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+  .title{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .subtitle{font-size:12.5px;color:var(--muted);margin:4px 0 0;line-height:1.45}
+
+  .panel-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:16px}
+
+  .field{position:relative}
+  label.lab{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .search-wrap{position:relative}
+  input#q{width:100%;padding:11px 12px 11px 34px;background:rgba(255,255,255,0.03);border:1px solid var(--line-strong);border-radius:10px;color:var(--text);font-family:var(--display);font-size:14px;outline:none;transition:border-color .15s, box-shadow .15s}
+  input#q::placeholder{color:#5d6873}
+  input#q:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;opacity:.55;pointer-events:none}
+
+  .suggestions{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;background:var(--surface-solid);border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;box-shadow:0 16px 40px -16px rgba(0,0,0,.75);display:none}
+  .suggestions.open{display:block}
+  .sugg{padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+  .sugg:last-child{border-bottom:none}
+  .sugg:hover,.sugg.active{background:var(--accent-dim)}
+  .sugg .nm{color:var(--text);line-height:1.3}
+  .sugg .sub{color:var(--muted);font-size:11px}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:8px;display:flex;gap:6px;align-items:center}
+  .hint b{color:#aab6c0;font-weight:500}
+
+  .readout{border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,rgba(94,211,196,0.06),transparent 70%);padding:14px 14px 13px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-height:74px}
+  .readout .place{flex:1;min-width:0}
+  .readout .place .name{font-size:13.5px;line-height:1.35;color:var(--text);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .readout .place .coord{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:5px}
+  .readout .temp{font-family:var(--mono);font-weight:600;font-size:30px;letter-spacing:-.02em;color:var(--accent);line-height:1;white-space:nowrap}
+  .readout .temp .u{font-size:14px;color:var(--muted);font-weight:400;margin-left:1px}
+  .readout.empty .temp,.readout.empty .name{color:var(--muted)}
+
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .seg button{font-family:var(--display);font-size:13.5px;font-weight:500;padding:11px 8px;border-radius:10px;cursor:pointer;border:1px solid var(--line-strong);background:rgba(255,255,255,0.02);color:var(--text);transition:all .15s;display:flex;gap:7px;align-items:center;justify-content:center}
+  .seg button:disabled{opacity:.4;cursor:not-allowed}
+  .seg button .dot{width:8px;height:8px;border-radius:50%}
+  .seg button[data-mode="hot"] .dot{background:var(--warm)}
+  .seg button[data-mode="cold"] .dot{background:var(--cold)}
+  .seg button[data-mode="hot"].on{border-color:var(--warm);background:rgba(224,112,95,0.12);box-shadow:0 0 0 3px rgba(224,112,95,0.10)}
+  .seg button[data-mode="cold"].on{border-color:var(--cold);background:rgba(111,159,224,0.12);box-shadow:0 0 0 3px rgba(111,159,224,0.10)}
+  .seg button:not(:disabled):hover{border-color:var(--line-strong);background:rgba(255,255,255,0.05)}
+
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .opacity{display:flex;align-items:center;gap:9px;flex:1}
+  .opacity label{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;background:var(--line-strong);outline:none;flex:1}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 0 8px rgba(94,211,196,.6)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
+  button.ghost{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:none;border:1px solid var(--line);border-radius:8px;padding:6px 9px;cursor:pointer;transition:all .15s}
+  button.ghost:hover{color:var(--text);border-color:var(--line-strong)}
+
+  .status{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.5;min-height:18px;display:flex;align-items:center;gap:8px}
+  .status .spin{width:11px;height:11px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .status b{color:var(--accent);font-weight:500}
+
+  .legend{display:none;flex-direction:column;gap:7px}
+  .legend.show{display:flex}
+  .legend .bar{height:8px;border-radius:6px;border:1px solid var(--line)}
+  .legend .bar.hot{background:linear-gradient(90deg,rgba(255,224,150,.5),rgba(233,138,80,.8),rgba(214,64,58,.95))}
+  .legend .bar.cold{background:linear-gradient(90deg,rgba(168,214,236,.5),rgba(98,150,224,.8),rgba(82,86,196,.95))}
+  .legend .scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+  .foot{font-family:var(--mono);font-size:10px;color:#5d6873;line-height:1.5;border-top:1px solid var(--line);padding-top:11px}
+  .foot b{color:var(--muted);font-weight:400}
+  .badge{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#0b0f13;background:var(--accent);border-radius:5px;padding:2px 6px;margin-left:6px}
+
+  .ref-dot{position:relative;width:16px;height:16px}
+  .ref-dot::before{content:"";position:absolute;inset:0;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(94,211,196,.25),0 0 14px rgba(94,211,196,.7)}
+  .ref-dot::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1.5px solid var(--accent);opacity:.6;animation:pulse 2.2s ease-out infinite}
+  @keyframes pulse{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
+
+  .leaflet-image-layer{transition:opacity .5s ease}
+
+  @media (prefers-reduced-motion:reduce){
+    .ref-dot::after{animation:none;opacity:.4}
+    .leaflet-image-layer{transition:none}
+    .status .spin{animation-duration:1.4s}
+  }
+  @media (max-width:480px){
+    .panel{top:10px;left:10px;width:calc(100vw - 20px)}
+    .readout .temp{font-size:26px}
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<aside class="panel" aria-label="Panneau de comparaison thermique">
+  <div class="panel-head">
+    <p class="eyebrow">Comparateur thermique · temps reel</p>
+    <h1 class="title">Isotherme</h1>
+    <p class="subtitle">Choisis un lieu, puis revele en degrade partout ou il fait plus chaud ou plus froid qu'ici, maintenant.</p>
+  </div>
+
+  <div class="panel-body">
+    <div class="field">
+      <label class="lab" for="q">1 · Lieu de reference</label>
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="text" autocomplete="off" placeholder="Rechercher une adresse, une ville…" />
+        <div id="sugg" class="suggestions" role="listbox"></div>
+      </div>
+      <p class="hint">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.6"><path d="M12 21s-7-5.2-7-11a7 7 0 1 1 14 0c0 5.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+        …ou <b>clique directement sur la carte</b>.
+      </p>
+    </div>
+
+    <div class="field">
+      <label class="lab">Reference</label>
+      <div id="readout" class="readout empty">
+        <div class="place">
+          <div class="name" id="ref-name">Aucun lieu selectionne</div>
+          <div class="coord" id="ref-coord">—</div>
+        </div>
+        <div class="temp" id="ref-temp">--<span class="u">°C</span></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lab">2 · Reveler les zones</label>
+      <div class="seg">
+        <button id="btn-hot" data-mode="hot" disabled><span class="dot"></span>Plus chaud</button>
+        <button id="btn-cold" data-mode="cold" disabled><span class="dot"></span>Plus froid</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="opacity">
+        <label for="opa">Intensite</label>
+        <input id="opa" type="range" min="0.25" max="1" step="0.05" value="0.85" />
+      </div>
+      <button id="clear" class="ghost">Effacer</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div id="legend" class="legend">
+      <div class="bar" id="legend-bar"></div>
+      <div class="scale"><span>egal a la reference</span><span id="legend-max">+20 °C</span></div>
+    </div>
+
+    <div id="foot" class="foot">Chargement des donnees…</div>
+  </div>
+</aside>
+
+<script>
+/* =========================================================================
+   ISOTHERME
+   - Donnees : data/temps.json (genere chaque heure cote serveur depuis
+     Open-Meteo). Aucun appel meteo cote visiteur -> pas de rate-limit.
+   - Rendu : heatmap lisse (interpolation bilineaire + reprojection Mercator)
+     sur canvas, recolore instantanement cote client.
+   - Geocodage : Photon (Komoot / OpenStreetMap), gratuit & open.
+   - Si data/temps.json est absent (ouverture en local sans backend),
+     bascule sur une grille de demonstration recuperee une seule fois.
+   ========================================================================= */
+
+const CFG = {
+  dataUrl: './data/temps.json',
+  tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  tileAttr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · meteo <a href="https://open-meteo.com">Open-Meteo</a> · geocodage <a href="https://photon.komoot.io">Photon</a>',
+  photon: 'https://photon.komoot.io',
+  cap: 20,        // ecart (°C) -> saturation couleur
+  eps: 0.3,       // demi-bande "egal" autour de la reference
+  rasterW: 1536,  // largeur du canvas heatmap (qualite/perf)
+  // grille de demonstration (fallback local) :
+  demoRes: 3, demoLatMin: -58, demoLatMax: 82
+};
+
+/* ---------- Carte ---------- */
+const map = L.map('map', { zoomControl:true, worldCopyJump:true, minZoom:2, maxBounds:[[-89,-200],[89,200]] })
+  .setView([30, 5], 3);
+L.tileLayer(CFG.tileUrl, { attribution:CFG.tileAttr, subdomains:'abcd', maxZoom:19, noWrap:true }).addTo(map);
+
+let heatOverlay = null; // L.imageOverlay
+
+/* ---------- Etat ---------- */
+let GRID = null;   // {res, latMin, latMax, lonMin, lonMax, nx, ny, temps:Float32Array, generated, demo}
+let ref = null;    // {lat, lon, temp, name}
+let mode = null;   // 'hot' | 'cold'
+let intensity = 0.85;
+
+/* ---------- DOM ---------- */
+const el = id => document.getElementById(id);
+const qInput=el('q'), suggBox=el('sugg');
+const readout=el('readout'), refName=el('ref-name'), refCoord=el('ref-coord'), refTemp=el('ref-temp');
+const btnHot=el('btn-hot'), btnCold=el('btn-cold'), opaSlider=el('opa'), clearBtn=el('clear');
+const statusEl=el('status'), legend=el('legend'), legendBar=el('legend-bar'), legendMax=el('legend-max'), foot=el('foot');
+
+/* canvas de rasterisation (hors ecran) */
+const rc = document.createElement('canvas');
+const rctx = rc.getContext('2d');
+
+/* marqueur */
+const refIcon = L.divIcon({ className:'', html:'<div class="ref-dot"></div>', iconSize:[16,16], iconAnchor:[8,8] });
+let refMarker=null;
+
+/* =================== Chargement des donnees =================== */
+init();
+async function init(){
+  setStatus('<span class="spin"></span>Chargement du champ de temperatures…');
+  try{
+    const r = await fetch(CFG.dataUrl, { cache:'no-store' });
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    GRID = normalizeGrid(j, false);
+    onGridReady();
+  }catch(e){
+    // pas de fichier statique -> mode demonstration (1 seule recolte live)
+    await loadDemoGrid();
+  }
+}
+
+function normalizeGrid(j, demo){
+  return {
+    res:j.res, latMin:j.latMin, latMax:j.latMax, lonMin:j.lonMin, lonMax:j.lonMax,
+    nx:j.nx, ny:j.ny, temps:Float32Array.from(j.temps, v=> v==null?NaN:v),
+    generated:j.generated, source:j.source, demo
+  };
+}
+
+function onGridReady(){
+  const when = GRID.generated ? new Date(GRID.generated) : null;
+  const ago = when ? freshness(when) : '';
+  foot.innerHTML = GRID.demo
+    ? `Mode demonstration <span class="badge">demo</span><br><b>Grille ${GRID.res}° recoltee en direct via Open-Meteo.</b> Deploie le backend GFS pour la version detaillee 0,5° sans limite.`
+    : `${escapeHtml(GRID.source || 'Donnees meteo')} · grille ${GRID.res}°<br><b>Valide ${ago}.</b>`;
+  setStatus('Commence par choisir un lieu de reference.');
+}
+
+function freshness(d){
+  const m = Math.round((Date.now()-d.getTime())/60000);
+  if(m<2) return 'a l\'instant';
+  if(m<60) return `il y a ${m} min`;
+  const h=Math.round(m/60); return `il y a ${h} h`;
+}
+
+/* =================== Fallback : grille de demo (live, 1 fois) =================== */
+async function loadDemoGrid(){
+  setStatus('<span class="spin"></span>Aucune donnee statique — recolte de demonstration en cours…');
+  const res=CFG.demoRes, latMax=CFG.demoLatMax, latMin=CFG.demoLatMin, lonMin=-180, lonMax=180;
+  const lats=[], lons=[];
+  for(let lat=latMax; lat>latMin-1e-9; lat-=res) lats.push(+lat.toFixed(3));
+  for(let lon=lonMin; lon<lonMax-1e-9; lon+=res) lons.push(+lon.toFixed(3));
+  const ny=lats.length, nx=lons.length;
+  const temps=new Float32Array(nx*ny).fill(NaN);
+
+  // liste de points -> requetes Open-Meteo par lots (une seule fois)
+  const pts=[];
+  for(let j=0;j<ny;j++) for(let i=0;i<nx;i++) pts.push({i,j,lat:lats[j],lon:lons[i]});
+  const chunk=200, chunks=[];
+  for(let k=0;k<pts.length;k+=chunk) chunks.push(pts.slice(k,k+chunk));
+
+  let done=0, ok=0;
+  let next=0;
+  async function worker(){
+    while(next<chunks.length){
+      const c=chunks[next++];
+      try{
+        const la=c.map(p=>p.lat).join(','), lo=c.map(p=>p.lon).join(',');
+        const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m`);
+        if(r.ok){
+          const d=await r.json(); const arr=Array.isArray(d)?d:[d];
+          c.forEach((p,idx)=>{ const t=arr[idx]?.current?.temperature_2m; if(typeof t==='number'){ temps[p.j*nx+p.i]=t; ok++; } });
+        }
+      }catch(e){/* lot ignore */}
+      done+=c.length;
+      setStatus(`<span class="spin"></span>Recolte de demonstration… ${Math.round(100*done/pts.length)} %`);
+    }
+  }
+  await Promise.all(Array.from({length:3}, worker));
+
+  if(ok===0){
+    setStatus('Impossible de recuperer des donnees (reseau ou limite API). Heberge le backend, puis recharge.');
+    foot.innerHTML = 'Aucune donnee disponible.';
+    return;
+  }
+  GRID = { res, latMin, latMax, lonMin, lonMax, nx, ny, temps, generated:new Date().toISOString(), demo:true };
+  onGridReady();
+}
+
+/* =================== Geocodage (Photon) =================== */
+let searchTimer=null, activeIdx=-1, currentSuggestions=[];
+
+qInput.addEventListener('input', ()=>{
+  const q=qInput.value.trim();
+  clearTimeout(searchTimer);
+  if(q.length<3){ closeSuggestions(); return; }
+  searchTimer=setTimeout(()=>geocode(q), 350);
+});
+
+async function geocode(q){
+  try{
+    const url=`${CFG.photon}/api/?q=${encodeURIComponent(q)}&limit=6&lang=fr`;
+    const r=await fetch(url); if(!r.ok) throw 0;
+    const d=await r.json();
+    renderSuggestions((d.features||[]).map(f=>({
+      lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0],
+      label:photonLabel(f.properties)
+    })));
+  }catch(e){ closeSuggestions(); }
+}
+
+function photonLabel(p){
+  const head=[p.name, p.street && !p.name?.includes(p.street)?p.street:null].filter(Boolean).join(' ');
+  const tail=[p.city||p.town||p.village||p.county, p.state, p.country].filter(Boolean).join(', ');
+  return { head: head||p.city||p.country||'Lieu', tail };
+}
+
+function renderSuggestions(items){
+  currentSuggestions=items; activeIdx=-1;
+  if(!items.length){ closeSuggestions(); return; }
+  suggBox.innerHTML=items.map((it,i)=>
+    `<div class="sugg" data-i="${i}" role="option"><span class="nm">${escapeHtml(it.label.head)}</span><span class="sub">${escapeHtml(it.label.tail)}</span></div>`).join('');
+  suggBox.classList.add('open');
+  [...suggBox.querySelectorAll('.sugg')].forEach(n=>n.addEventListener('click',()=>pickSuggestion(+n.dataset.i)));
+}
+function closeSuggestions(){ suggBox.classList.remove('open'); suggBox.innerHTML=''; currentSuggestions=[]; activeIdx=-1; }
+
+qInput.addEventListener('keydown', e=>{
+  if(!suggBox.classList.contains('open')) return;
+  const items=[...suggBox.querySelectorAll('.sugg')];
+  if(e.key==='ArrowDown'){ e.preventDefault(); activeIdx=Math.min(activeIdx+1,items.length-1); hi(items); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); activeIdx=Math.max(activeIdx-1,0); hi(items); }
+  else if(e.key==='Enter'){ e.preventDefault(); pickSuggestion(activeIdx>=0?activeIdx:0); }
+  else if(e.key==='Escape'){ closeSuggestions(); }
+});
+function hi(items){ items.forEach((n,i)=>n.classList.toggle('active',i===activeIdx)); }
+
+function pickSuggestion(i){
+  const it=currentSuggestions[i]; if(!it) return;
+  const label=[it.label.head, it.label.tail].filter(Boolean).join(', ');
+  qInput.value=label; closeSuggestions();
+  setReference(it.lat, it.lon, label, true);
+}
+document.addEventListener('click', e=>{ if(!e.target.closest('.search-wrap')) closeSuggestions(); });
+
+async function reverseGeocode(lat, lon){
+  try{
+    const r=await fetch(`${CFG.photon}/reverse?lat=${lat}&lon=${lon}&lang=fr`); if(!r.ok) throw 0;
+    const d=await r.json(); const f=(d.features||[])[0]; if(!f) return null;
+    const l=photonLabel(f.properties); return [l.head,l.tail].filter(Boolean).join(', ');
+  }catch(e){ return null; }
+}
+
+/* =================== Reference =================== */
+map.on('click', async e=>{
+  const {lat,lng}=e.latlng;
+  setReference(lat, lng, 'Localisation…', false);
+  const name=await reverseGeocode(lat,lng);
+  if(ref && ref.lat===lat && ref.lon===lng){
+    ref.name = name || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+    refName.textContent=ref.name;
+  }
+});
+
+function setReference(lat, lon, name, pan){
+  ref={ lat, lon, name, temp:null };
+  readout.classList.remove('empty');
+  refName.textContent=name;
+  refCoord.textContent=`${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+
+  if(!refMarker) refMarker=L.marker([lat,lon],{icon:refIcon,keyboard:false}).addTo(map);
+  else refMarker.setLatLng([lat,lon]);
+  if(pan) map.flyTo([lat,lon], Math.max(map.getZoom(),4), {duration:.8});
+
+  // temperature de reference = valeur du champ interpole au point (aucun reseau)
+  const t = GRID ? sample(lat,lon) : NaN;
+  if(Number.isFinite(t)){
+    ref.temp=t;
+    refTemp.innerHTML=`${t.toFixed(1)}<span class="u">°C</span>`;
+    btnHot.disabled=false; btnCold.disabled=false;
+    if(mode) render(); else setStatus(`Reference a <b>${t.toFixed(1)} °C</b>. Choisis « plus chaud » ou « plus froid ».`);
+  }else{
+    ref.temp=null;
+    refTemp.innerHTML='--<span class="u">°C</span>';
+    btnHot.disabled=true; btnCold.disabled=true;
+    setStatus(GRID ? 'Ce point est hors de la grille de donnees. Choisis un autre lieu.' : 'Donnees pas encore chargees…');
+  }
+}
+
+/* =================== Echantillonnage bilineaire =================== */
+function sample(lat, lon){
+  if(!GRID) return NaN;
+  const {res,latMin,latMax,lonMin,nx,ny,temps}=GRID;
+  if(lat<latMin || lat>latMax) return NaN;
+  let gx=(lon-lonMin)/res; let gy=(latMax-lat)/res;   // row 0 = latMax
+  if(gx<0) gx+=360/res;                                // wrap longitude
+  if(gx>nx-1) gx-=nx; if(gx<0) gx=0;
+  const x0=Math.floor(gx), y0=Math.floor(gy);
+  const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
+  const fx=gx-x0, fy=gy-y0;
+  const v00=temps[y0*nx+x0], v10=temps[y0*nx+x1], v01=temps[y1*nx+x0], v11=temps[y1*nx+x1];
+  // moyenne ponderee en ignorant les NaN
+  let sum=0, w=0;
+  const add=(v,wt)=>{ if(Number.isFinite(v)){ sum+=v*wt; w+=wt; } };
+  add(v00,(1-fx)*(1-fy)); add(v10,fx*(1-fy)); add(v01,(1-fx)*fy); add(v11,fx*fy);
+  return w>0 ? sum/w : NaN;
+}
+
+/* =================== Rendu heatmap =================== */
+btnHot.addEventListener('click', ()=>toggleMode('hot'));
+btnCold.addEventListener('click', ()=>toggleMode('cold'));
+opaSlider.addEventListener('input', ()=>{ intensity=+opaSlider.value; if(mode) render(); });
+clearBtn.addEventListener('click', clearReveal);
+
+function toggleMode(m){ if(mode===m){ clearReveal(); return; } mode=m; btnHot.classList.toggle('on',m==='hot'); btnCold.classList.toggle('on',m==='cold'); render(); }
+
+function clearReveal(){
+  mode=null; btnHot.classList.remove('on'); btnCold.classList.remove('on');
+  if(heatOverlay){ map.removeLayer(heatOverlay); heatOverlay=null; }
+  legend.classList.remove('show');
+  if(ref?.temp!=null) setStatus(`Reference a <b>${ref.temp.toFixed(1)} °C</b>. Choisis un mode.`);
+}
+
+const GRAD = {
+  hot:  [[255,224,150],[233,138,80],[214,64,58]],
+  cold: [[168,214,236],[98,150,224],[82,86,196]]
+};
+function ramp(m, t){ // t in 0..1 sur 3 paliers
+  const s=GRAD[m]; const seg=t<0.5?0:1; const lt=t<0.5?t/0.5:(t-0.5)/0.5;
+  const a=s[seg], b=s[seg+1];
+  return [a[0]+(b[0]-a[0])*lt, a[1]+(b[1]-a[1])*lt, a[2]+(b[2]-a[2])*lt];
+}
+
+function latToMercY(lat){ const r=Math.max(-85.05,Math.min(85.05,lat))*Math.PI/180; return Math.log(Math.tan(Math.PI/4+r/2)); }
+
+function render(){
+  if(!GRID || !ref || ref.temp==null) return;
+  const {latMin,latMax,lonMin,lonMax}=GRID;
+  const refT=ref.temp, m=mode;
+
+  // dimensions : warp Mercator pour aligner sur Leaflet
+  const W=CFG.rasterW;
+  const yTop=latToMercY(latMax), yBot=latToMercY(latMin);
+  const lonSpanRad=(lonMax-lonMin)*Math.PI/180;
+  let H=Math.round(W*(yTop-yBot)/lonSpanRad);
+  H=Math.max(256,Math.min(H,2048));
+  rc.width=W; rc.height=H;
+  const img=rctx.createImageData(W,H), d=img.data;
+
+  let count=0;
+  for(let j=0;j<H;j++){
+    const my=yTop+(yBot-yTop)*(j/(H-1));
+    const lat=(2*Math.atan(Math.exp(my))-Math.PI/2)*180/Math.PI;
+    for(let i=0;i<W;i++){
+      const lon=lonMin+(lonMax-lonMin)*(i/(W-1));
+      const t=sample(lat,lon);
+      const o=(j*W+i)*4;
+      if(!Number.isFinite(t)){ d[o+3]=0; continue; }
+      const delta=t-refT;
+      const matched = m==='hot' ? delta>CFG.eps : delta<-CFG.eps;
+      if(!matched){ d[o+3]=0; continue; }
+      const mag=Math.min(Math.abs(delta)/CFG.cap,1);
+      const [r,g,b]=ramp(m,mag);
+      d[o]=r|0; d[o+1]=g|0; d[o+2]=b|0;
+      d[o+3]=Math.round(255*intensity*Math.pow(mag,0.82));
+      count++;
+    }
+  }
+  rctx.putImageData(img,0,0);
+  const url=rc.toDataURL();
+
+  const bounds=[[latMin,lonMin],[latMax,lonMax]];
+  if(!heatOverlay){
+    heatOverlay=L.imageOverlay(url, bounds, {opacity:0, interactive:false, className:'heat'}).addTo(map);
+    requestAnimationFrame(()=>heatOverlay && heatOverlay.setOpacity(1));
+  }else{
+    heatOverlay.setUrl(url); heatOverlay.setBounds(bounds); heatOverlay.setOpacity(1);
+  }
+
+  legendBar.className='bar '+(m==='hot'?'hot':'cold');
+  legend.classList.add('show'); legendMax.textContent=`+${CFG.cap} °C`;
+  const word=m==='hot'?'plus chaud':'plus froid';
+  setStatus(`Zones ou il fait <b>${word}</b> que <b>${refT.toFixed(1)} °C</b>, maintenant.`);
+}
+
+/* ---------- utils ---------- */
+function setStatus(html){ statusEl.innerHTML=html||''; }
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+</script>
+</body>
+</html>

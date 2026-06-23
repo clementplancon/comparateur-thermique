@@ -1,0 +1,46 @@
+name: Update temperature grid & deploy
+
+on:
+  schedule:
+    - cron: '20 * * * *'     # chaque heure (minute 20). Le cron GitHub peut etre retarde.
+  workflow_dispatch: {}        # bouton "Run workflow" manuel
+  push:
+    branches: [ main ]         # redeploie aussi a chaque modif du site
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installer les dependances (lecture GRIB)
+        run: pip install numpy xarray cfgrib eccodes
+
+      - name: Recolter le champ de temperatures (GFS NOAA)
+        run: python scripts/fetch_gfs.py
+
+      - name: Preparer l'artefact du site
+        run: |
+          mkdir -p _site/data
+          cp index.html _site/
+          cp data/temps.json _site/data/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
