@@ -1,17 +1,338 @@
+
+Claude a terminé la réponse.
+Peux tu me faire le code pour un petit site web simple :
+
+Une map, on choisis une adresse (on peut la saisir (autocomplete) ou cliquer sur la map.
+
+Ensuite on choisis "plus chaud" ou "plus froid" et ça révèle sur la carte toutes les zones de la planète où il fait actuellement plus chaud ou plus froid que l'adresse saisie (suivant le choix).
+
+Fond de carte moderne, data gratuite et libre, épuré, moderne, dark, look légèrement technologique, couleurs softs.
+
+Pose des questions en cas de problème, d'ambiguité, d'alternatives, de suggestions et de remarques à levées.
+
+23 juin
+
+Validant les capacités de l'API Open-Meteo pour localités multiples
+Validant les capacités de l'API Open-Meteo pour localités multiples
+Je vais d'abord vérifier quelques détails techniques de l'API météo que je compte utiliser (le format exact pour interroger plusieurs points change parfois), puis je te livre un site complet.
+
+
+Esquissant l'architecture d'un instrument thermique interactif
+Esquissant l'architecture d'un instrument thermique interactif
+J'ai confirmé l'essentiel (Open-Meteo : sans clé, multi-points jusqu'à 1000 coordonnées par requête). Je consulte rapidement le guide de design front, puis je construis le site.
+
+
+Démêlant la validité CSS et les règles de cascade
+Démêlant la validité CSS et les règles de cascade
+Données et API validées. Je construis le site (un seul fichier HTML autonome) puis je te liste les choix et les points à arbitrer.
+
+
+Rectified malformed CSS variable declaration
+Rectified malformed CSS variable declaration
+Je corrige une coquille dans le CSS (une variable dupliquée).
+
+
+Fichier modifié, lu un fichier
+Fichier modifié, lu un fichier
+Voilà Isotherme, un fichier HTML autonome (aucune installation, aucune clé API). Ouvre‑le dans un navigateur : recherche un lieu (autocomplete) ou clique sur la carte, puis « Plus chaud » / « Plus froid » peint en temps réel toutes les zones du globe correspondantes.
+
+Stack 100 % gratuit et libre
+
+Carte : Leaflet + tuiles CARTO Dark Matter (fond sombre épuré, attribution OSM/CARTO).
+Géocodage + autocomplete + clic→nom : Nominatim (OpenStreetMap).
+Températures « maintenant » : Open-Meteo (current=temperature_2m, sans clé, jusqu'à 1000 points par requête).
+Couleurs soft : ambre→corail pour le chaud, ciel→indigo pour le froid, opacité proportionnelle à l'écart. Accent teal pour l'instrument.
+Comment ça marche techniquement. Il n'existe pas d'endpoint gratuit qui renvoie « le globe entier maintenant » d'un coup, donc j'échantillonne une grille mondiale (pas réglable : Rapide/Standard/Détaillé), je récupère les températures par lots, et je colore chaque cellule où il fait plus chaud/froid que ta référence. La grille est mise en cache 10 min, donc basculer chaud↔froid est instantané.
+
+Quelques points à arbitrer :
+
+Résolution vs vitesse. « Standard » ≈ 900 points (~5 requêtes, quelques secondes). « Détaillé » (~1600) est plus précis mais plus lent et plus lourd à dessiner. Tu veux que je pousse plus fin, ou au contraire que je privilégie la fluidité ?
+« Maintenant » = modèle de prévision, pas des stations météo réelles : Open-Meteo donne la température de l'heure en cours issue d'un modèle (résolution ~9–11 km mondiale). Écarts possibles de quelques dixièmes avec une station locale. OK pour toi ?
+Rendu en cellules (rectangles nets) plutôt qu'un dégradé lissé type heatmap. C'est plus rapide et lisible, mais moins « organique ». Tu préfères un rendu interpolé doux ?
+Océans et pôles : les océans sont inclus (voulu, « toutes les zones »), mais j'ai exclu les pôles (±80°) pour la stabilité. Je les remets ?
+Limites Nominatim/CARTO : parfait pour un usage perso/démo, mais Nominatim impose ~1 requête/seconde et CARTO a des quotas. Pour une mise en prod publique, il faudrait soit héberger son propre géocodeur, soit passer à un service avec clé. Tu vises un usage perso ou un déploiement public ?
+Tu veux que j'ajuste un de ces points, ou que j'ajoute la géolocalisation « ma position » et l'affichage de la température au survol d'une zone ?
+
+
+Isotherme
+Code · HTML 
+J'aimerais de base avoir un niveau très détaillé, l'api me limite quand je fais plusieurs tests, elle ne répond plus, il faut trouver une autre solution.
+C'est ok
+Oui je veux un vrai rendu lissé type heatmap assez précis, c'est pour ça que l'api ne semble pas adéquat (limites)
+Non les pôles on s'en fiche, les océans aussi d'ailleurs.
+Un déploiement public mais je veux rester entièrement gratuit et open data.
+23 juin
+
+Architected backend-cached heatmap solution bypassing API limits
+Architected backend-cached heatmap solution bypassing API limits
+Compris, et tu as raison : la cause racine, c'est l'architecture. Faire calculer une grille par chaque visiteur depuis le navigateur cogne forcément la limite d'Open‑Meteo (surtout en testant en boucle), et un échantillonnage par points ne donnera jamais un vrai rendu lissé précis.
+
+La bonne approche pour détaillé + lissé + public + 100 % gratuit/open :
+
+Découpler la donnée du visiteur. Un job planifié (GitHub Actions, gratuit) récupère une fois par heure une grille mondiale chez Open‑Meteo, côté serveur, et écrit un fichier statique data/temps.json. Tous les visiteurs lisent ce seul fichier → zéro appel météo par visiteur, zéro rate‑limit, et tu peux te permettre une grille fine (1°).
+Vrai heatmap lissé. Le front rasterise la grille sur un canvas avec interpolation bilinéaire + reprojection Mercator, donc un champ continu et fluide, recoloré instantanément quand tu changes de lieu ou de mode (aucun réseau).
+Je te livre le projet complet. Je commence par l'app, puis le job de données, le workflow et le README.
+
+
+Validant la logique frontend et générant données test
+Validant la logique frontend et générant données test
+Maintenant le job qui génère les données (Node, sans dépendance), le workflow GitHub Actions, et le README.
+
+
+Orchestrant l'intégration de données d'exemple pour le rendu local
+Orchestrant l'intégration de données d'exemple pour le rendu local
+Je vérifie la syntaxe des scripts.
+
+
+Arbitré entre données synthétiques et déploiement réel, opta pour l'honnêteté
+Arbitré entre données synthétiques et déploiement réel, opta pour l'honnêteté
+Tout est validé. Je crée une archive du projet pour faciliter le téléchargement.
+
+
+A exécuté une commande, lu un fichier
+A exécuté une commande, lu un fichier
+Projet complet livré (isotherme.zip contient les 4 fichiers).
+
+Ce qui change vs la v1, point par point :
+
+Plus de rate‑limit. Le navigateur ne touche plus jamais l'API météo. Un job GitHub Actions récolte la grille mondiale une fois par heure côté serveur (~150 requêtes/h, loin des limites) et écrit data/temps.json. Tous les visiteurs lisent ce seul fichier statique. C'était bien un problème d'architecture, pas de réglage.
+Détaillé par défaut. Grille 1° sur tout le globe habité (pôles exclus). Réglable dans fetch-temps.mjs (RES).
+Vrai heatmap lissé. Le front rasterise le champ avec interpolation bilinéaire + reprojection Mercator sur un canvas, donc un dégradé continu et précis. Changer de lieu ou basculer chaud/froid est instantané (zéro réseau, tout est recalculé en local). Un curseur « Intensité » règle l'opacité.
+Pôles/océans ignorés comme demandé (zone −60°→84°, océans laissés tels quels pour un champ continu).
+Public + gratuit + open. Déploiement GitHub Pages, géocodage passé à Photon (Komoot/OSM, pensé pour l'autocomplete), fond CARTO. Tout démarre sans clé.
+Pour le tester tout de suite : ouvre index.html via un serveur local (python3 -m http.server). Sans data/temps.json, il bascule automatiquement sur une grille de démo récoltée en direct une seule fois (plus grossière, juste pour voir le rendu). La vraie résolution arrive dès que le workflow tourne (procédure en 4 étapes dans le README).
+
+Deux points honnêtes à garder en tête :
+
+Les instances publiques de Photon et CARTO ont un « usage raisonnable ». À fort trafic, il faudra auto‑héberger Photon (open source, Docker) et prendre une clé tuiles ou auto‑héberger Protomaps — tout reste sur données ouvertes. Détaillé dans le README.
+Au zoom fort, le heatmap devient flou (normal : la donnée est à 1°, et un heatmap est lisse par nature). Si tu veux du croustillant en zoom, on peut passer RES à 0.5° (≈600 requêtes/h, encore OK) ou redessiner le canvas au niveau du viewport plutôt qu'en overlay global — dis‑moi si tu veux que je pousse dans cette direction.
+
+Index
+Code · HTML 
+
+Isotherme
+ZIP 
+
+Fetch temps
+MJS 
+
+Update
+YML 
+
+Readme
+Document · MD 
+Run node scripts/fetch-temps.mjs
+Grille 1° : 360x145 = 52200 points, 261 requetes.
+  200/52200
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+  2200/52200
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+  lot abandonne: HTTP 429
+
+23 juin
+
+Deciphering API call cost nuances and thresholds
+Deciphering API call cost nuances and thresholds
+Le 429 confirme que le problème est plus profond qu'un simple espacement des requêtes. Laisse-moi vérifier le modèle de quota exact d'Open-Meteo avant de te proposer le bon correctif — c'est lui qui détermine la solution.
+
+
+Pinpointing precise NOMADS GFS grib filter endpoint patterns
+Pinpointing precise NOMADS GFS grib filter endpoint patterns
+Voilà la cause racine, confirmée noir sur blanc. Le compteur d'Open‑Meteo ne compte pas « 1 requête HTTP = 1 appel » : cette fonctionnalité réplique en réalité le fait de faire plusieurs appels API dans une boucle — autrement dit chaque point de la grille = 1 appel. Avec les plafonds 10 000 appels/jour, 5 000 par heure et 600 par minute, tes lots de 200 points consomment 200 appels chacun : 3 lots suffisent à dépasser 600/min → 429. 
+Substack
+Substack
+
+Conséquence : une grille mondiale 1° (~52 000 points) coûte ~52 000 appels, soit 5× le budget quotidien entier. Open‑Meteo en version gratuite ne peut tout simplement pas alimenter un champ mondial détaillé. Il faut une source fichier (tout le globe d'un coup, sans quota par point). Je vérifie l'URL exacte de la source que je vais utiliser.
+
+
+Architected GFS-based backend to replace rate-limited API approach
+Architected GFS-based backend to replace rate-limited API approach
+C'est confirmé et c'est un mur dur : Open‑Meteo gratuit ne peut pas servir un champ mondial détaillé, quel que soit le batching. Il faut une source fichier — tout le globe en un seul téléchargement, sans quota par point.
+
+La meilleure pour « détaillé + gratuit + open + public » : GFS de la NOAA (domaine public américain, sans clé, sans limite par point). Un seul fichier ramène la température 2 m de toute la planète au pas de 0,5°. J'ai vérifié l'URL exacte du service NOMADS sur plusieurs sources récentes. Je récupère le grain dans GFS via Python, je le convertis en temps.json — le front, lui, ne change pas.
+
+Je vérifie d'abord que les dépendances (lecture GRIB) s'installent proprement, c'est le seul point de fragilité.
+
+
+Validated dependency resolution and plotted Python implementation strategy
+Validated dependency resolution and plotted Python implementation strategy
+Les dépendances s'installent et la bibliothèque GRIB (eccodes 2.47.1) se charge via pip seul — aucune dépendance système à installer en CI. Le pipeline GFS est viable. J'écris le script.
+
+
+Validating transform efficiency and data compression metrics
+Validating transform efficiency and data compression metrics
+Je teste la logique de transformation avec des données synthétiques (NOMADS n'est pas joignable depuis cet environnement, mais la partie risquée est le remaniement de la grille).
+
+
+Evaluated data compression trade-offs and refactored workflow architecture
+Evaluated data compression trade-offs and refactored workflow architecture
+La transformation est correcte : nord en haut, longitudes −180..180, crop aux latitudes habitées, 208 080 points, ~1 Mo brut (≈300 Ko une fois gzippé par GitHub Pages). Je mets à jour le workflow, le README, et un détail du front (afficher la source).
+
+
+Identified missing source field in normalizeGrid function
+Identified missing source field in normalizeGrid function
+Maintenant le README, puis je revalide tout et je rezippe.
+
+
+Identified and remedied extraneous cache files from archive
+Identified and remedied extraneous cache files from archive
+Diagnostic confirmé, et le correctif change la source de données, pas un réglage.
+
+Pourquoi le 429. Open‑Meteo ne compte pas « 1 requête HTTP = 1 appel » : chaque point de la grille compte comme un appel (plafonds 10 000/jour, 5 000/h, 600/min). Tes lots de 200 points = 200 appels chacun → 3 lots dépassent déjà 600/min. Et une grille 1° (~52 000 points) coûterait 5× le budget quotidien. La version gratuite ne peut pas servir un champ mondial détaillé, quel que soit l'espacement.
+
+La solution : une source fichier. Je suis passé au modèle GFS de la NOAA (domaine public, sans clé). Un seul téléchargement GRIB2, filtré côté serveur sur la seule température 2 m, ramène tout le globe au pas de 0,5° — sans quota par point. Concrètement :
+
+scripts/fetch_gfs.py tourne une fois/heure dans GitHub Actions, écrit data/temps.json (208 080 points, ~1 Mo → ~300 Ko gzippé servi par Pages).
+Le site lit ce fichier unique : zéro appel météo par visiteur, donc plus jamais de 429, même en testant en boucle ou en public.
+Le front n'a quasi pas changé (heatmap lissé, recoloration instantanée). J'ai juste affiché la source réelle.
+Ce que j'ai vérifié pour réduire le risque :
+
+L'URL NOMADS exacte (filter_gfs_0p50.pl + var_TMP + lev_2_m_above_ground), recoupée sur plusieurs sources récentes.
+Que cfgrib/eccodes s'installent par pip seul (binaire GRIB 2.47.1 inclus, aucune dépendance système en CI).
+La transformation de grille (orientation nord‑en‑haut, longitudes −180..180, crop, conversion Kelvin→°C) sur données synthétiques : sortie conforme à ce qu'attend le front.
+Le seul point que je n'ai pas pu tester : le téléchargement réel depuis NOMADS (réseau bloqué dans mon environnement). Le script est défensif (remonte de cycle en cycle si indispo, valide les octets GRIB), mais le vrai test, c'est le premier Run workflow — ou en local :
+
+bash
+pip install numpy xarray cfgrib eccodes
+python scripts/fetch_gfs.py        # doit écrire data/temps.json
+Deux choix à valider de ton côté :
+
+0,5° vs 0,25°. J'ai mis 0,5° (≈1 Mo, détaillé + lissé, déjà très fin pour des zones chaud/froid). Le passage à 0,25° (RES_TAG="0p25", STEP_H=1) quadruple les points (~4 Mo) — utile seulement si tu zoomes beaucoup. Je te conseille de rester en 0,5°.
+« Maintenant ». GFS sort un run toutes les 6 h ; le script prend le run le plus récent et l'échéance dont l'heure de validité tombe au plus près de l'instant courant, donc un champ ~à l'heure. C'est une sortie de modèle (~9–25 km), pas une mesure de station — comme on l'avait acté.
+Lance le workflow et dis‑moi ce que crache l'étape « Recolter le champ » : si NOMADS répond un nom de fichier légèrement différent, c'est la seule ligne à ajuster (filter_url).
+
+
+Isotherme
+ZIP 
+
+Fetch gfs
+PY 
+
+Update
+YML 
+
+Index
+Code · HTML 
+
+Readme
+Document · MD 
+
+Run pip install numpy xarray cfgrib eccodes Collecting numpy Downloading numpy-2.5.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB) Collecting xarray Downloading xarray-2026.4.0-py3-none-any.whl.metadata (12 kB) Collecting cfgrib Downloading cfgrib-0.9.15.1
+
+pasted
+
+23 juin
+
+I cannot provide a summary because the user prompt is empty
+I cannot provide a summary because the user prompt is empty
+Bonne nouvelle : les dépendances s'installent parfaitement, le script tourne. Le seul blocage, c'est NOMADS qui renvoie 500 — leur CGI « grib filter » est notoirement capricieux (et la nomenclature 0.5° y diffère). Je bascule sur une méthode bien plus fiable : le miroir AWS S3 open‑data de la NOAA, en lisant l'index .idx pour ne télécharger en range request que le message « température 2 m ». Je vérifie les chemins exacts.
+
+
+Architected robust AWS S3 data retrieval pipeline
+Architected robust AWS S3 data retrieval pipeline
+Tout est confirmé : les dépendances marchent, le seul souci était le CGI NOMADS (500, capricieux). Je remplace le téléchargement par le miroir AWS S3 open‑data (noaa-gfs-bdp-pds), méthode canonique : je lis le .idx, repère le message « TMP:2 m above ground », et je ne télécharge que ces octets via une range request. S3 est stable, sans rate‑limit, et supporte les requêtes par plage. J'ajoute aussi le miroir Google en secours.
+
+
+The user prompt is empty, so there is no primary language established. However, based on the thinking block being in English, I'll provide the summary in English: Refactoring README documentation and repackaging deliverables
+The user prompt is empty, so there is no primary language established. However, based on the thinking block being in English, I'll provide the summary in English: Refactoring README documentation and repackaging deliverables
+Je teste hors‑ligne l'analyse de l'index .idx et le calcul de la plage d'octets (la partie nouvelle), avec un index synthétique réaliste.
+
+
+Verified parsing logic and orchestrated README documentation updates
+Verified parsing logic and orchestrated README documentation updates
+Parfait — offsets corrects, chemin S3 conforme. Je mets à jour le README (NOMADS → miroirs S3/Google) et je rezippe.
+
+
+Actualiser le README et rezipper
+Actualiser le README et rezipper
+Super c'est niquel, je voudrais que cela soit aussi pratique sur mobile. Le panneau de configuration cache tout sur mobile
+
+13:43
+
+Architected mobile bottom sheet to replace fixed panel overlay
+Architected mobile bottom sheet to replace fixed panel overlay
+Content que le pipeline tourne. Pour le mobile, je transforme le panneau en bottom sheet (tiroir glissant) : réduit, il ne laisse qu'une petite barre en bas — la carte reste visible ; on le déplie/déplie d'un toucher. Et il se referme tout seul après un « plus chaud / plus froid » pour révéler la carte.
+
+Je regarde les zones du fichier à modifier.
+
+
+Orchestrated CSS modifications pour améliorer l'expérience mobile
+Orchestrated CSS modifications pour améliorer l'expérience mobile
+Je remplace le bloc responsive par la logique de bottom sheet.
+
+
+Identifié la structure HTML à corriger pour fermer les balises
+Identifié la structure HTML à corriger pour fermer les balises
+Maintenant le JavaScript : position du zoom, logique du tiroir, et mises à jour automatiques.
+
+
+Démêlant les interactions entre curseur et panneau ouvert
+Démêlant les interactions entre curseur et panneau ouvert
+Maintenant render() (fermeture auto pour révéler la carte) et clearReveal() :
+
+
+Vérifier la compatibilité mobile du panneau de configuration
+Vérifier la compatibilité mobile du panneau de configuration
+Je valide la syntaxe et la structure, puis je rezippe.
+
+
+Optimisé l'accessibilité mobile en repositionnant l'attribution cartographique
+Optimisé l'accessibilité mobile en repositionnant l'attribution cartographique
+Un détail de conformité : quand le tiroir est replié, sa barre couvrirait l'attribution OSM/CARTO en bas. Je remonte les contrôles Leaflet au-dessus de la barre sur mobile.
+
+
+Fichier modifié, a exécuté une commande, lu un fichier
+Fichier modifié, a exécuté une commande, lu un fichier
+Fait. Sur mobile, le panneau devient un bottom sheet qui ne masque plus la carte.
+
+Concrètement :
+
+Au repos, il ne reste qu'une fine barre en bas (poignée + un résumé qui s'adapte : « Touchez la carte ou recherchez un lieu », puis « Paris · 18,4 °C · plus chaud »). Toute la carte est visible.
+Un toucher sur la barre déplie le tiroir (max 84 % de hauteur, contenu scrollable) ; un nouveau toucher le replie. Le chevron pivote pour indiquer l'état.
+Flux guidé : tu peux toucher la carte directement (la barre reste discrète), le tiroir s'ouvre tout seul au premier lieu choisi pour présenter « plus chaud / plus froid », puis se referme automatiquement dès que tu lances un mode — la heatmap apparaît plein écran.
+Le slider « Intensité » ne referme pas le tiroir (tu ajustes en continu), seul le choix d'un mode le fait.
+Détails soignés au passage : zoom déplacé en haut à droite (ne chevauche plus le panneau), attribution OSM/CARTO remontée au-dessus de la barre pour rester visible et conforme, animations désactivées si « réduire les animations » est activé. Sur desktop, rien ne change : le panneau flottant en haut à gauche reste identique (la barre n'apparaît qu'en dessous de 640 px de large).
+
+Si tu veux aller plus loin : je peux rendre la poignée glissable (drag pour ouvrir/fermer progressivement plutôt qu'au toucher), ajouter un bouton « ma position » (géolocalisation), ou afficher la température au survol/toucher d'une zone de la carte. Dis-moi.
+
+
+Index
+Code · HTML 
+
+Isotherme
+ZIP 
+
+Souhaitez-vous être averti lorsque Claude répond ?
+Claude Fable 5 est actuellement indisponible.
+En savoir plus(opens in new tab)
+
+
+
+
+Claude est une IA et peut faire des erreurs. Veuillez vérifier les réponses.
+
+
+Index · HTML
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Isotherme — comparateur thermique mondial</title>
-
+ 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-
+ 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-
+ 
 <style>
   :root{
     --bg:#0b0f13;
@@ -32,14 +353,14 @@
   html,body{height:100%;margin:0}
   body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-font-smoothing:antialiased;overflow:hidden}
   #map{position:absolute;inset:0;background:var(--bg);z-index:1}
-
+ 
   .leaflet-control-attribution{background:rgba(11,15,19,0.7)!important;color:var(--muted)!important;font-family:var(--mono);font-size:10px;backdrop-filter:blur(6px)}
   .leaflet-control-attribution a{color:var(--muted)!important}
   .leaflet-bar a{background:var(--surface-solid)!important;color:var(--text)!important;border-color:var(--line)!important}
   .leaflet-bar a:hover{background:#1a222a!important}
   /* l'overlay heatmap doit rester lisse au scaling */
   .leaflet-image-layer{image-rendering:auto}
-
+ 
   .panel{
     position:absolute;top:16px;left:16px;z-index:1000;
     width:min(360px, calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;
@@ -49,15 +370,15 @@
   }
   .panel::-webkit-scrollbar{width:8px}
   .panel::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:8px}
-
+ 
   .panel-head{padding:16px 18px 12px;border-bottom:1px solid var(--line);position:relative}
   .panel-head::before{content:"";position:absolute;left:18px;right:18px;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
   .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
   .title{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
   .subtitle{font-size:12.5px;color:var(--muted);margin:4px 0 0;line-height:1.45}
-
+ 
   .panel-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:16px}
-
+ 
   .field{position:relative}
   label.lab{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
   .search-wrap{position:relative}
@@ -65,7 +386,7 @@
   input#q::placeholder{color:#5d6873}
   input#q:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
   .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;opacity:.55;pointer-events:none}
-
+ 
   .suggestions{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;background:var(--surface-solid);border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;box-shadow:0 16px 40px -16px rgba(0,0,0,.75);display:none}
   .suggestions.open{display:block}
   .sugg{padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
@@ -75,7 +396,7 @@
   .sugg .sub{color:var(--muted);font-size:11px}
   .hint{font-size:11.5px;color:var(--muted);margin-top:8px;display:flex;gap:6px;align-items:center}
   .hint b{color:#aab6c0;font-weight:500}
-
+ 
   .readout{border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,rgba(94,211,196,0.06),transparent 70%);padding:14px 14px 13px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-height:74px}
   .readout .place{flex:1;min-width:0}
   .readout .place .name{font-size:13.5px;line-height:1.35;color:var(--text);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -83,7 +404,7 @@
   .readout .temp{font-family:var(--mono);font-weight:600;font-size:30px;letter-spacing:-.02em;color:var(--accent);line-height:1;white-space:nowrap}
   .readout .temp .u{font-size:14px;color:var(--muted);font-weight:400;margin-left:1px}
   .readout.empty .temp,.readout.empty .name{color:var(--muted)}
-
+ 
   .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .seg button{font-family:var(--display);font-size:13.5px;font-weight:500;padding:11px 8px;border-radius:10px;cursor:pointer;border:1px solid var(--line-strong);background:rgba(255,255,255,0.02);color:var(--text);transition:all .15s;display:flex;gap:7px;align-items:center;justify-content:center}
   .seg button:disabled{opacity:.4;cursor:not-allowed}
@@ -93,7 +414,7 @@
   .seg button[data-mode="hot"].on{border-color:var(--warm);background:rgba(224,112,95,0.12);box-shadow:0 0 0 3px rgba(224,112,95,0.10)}
   .seg button[data-mode="cold"].on{border-color:var(--cold);background:rgba(111,159,224,0.12);box-shadow:0 0 0 3px rgba(111,159,224,0.10)}
   .seg button:not(:disabled):hover{border-color:var(--line-strong);background:rgba(255,255,255,0.05)}
-
+ 
   .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .opacity{display:flex;align-items:center;gap:9px;flex:1}
   .opacity label{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
@@ -102,52 +423,94 @@
   input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
   button.ghost{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:none;border:1px solid var(--line);border-radius:8px;padding:6px 9px;cursor:pointer;transition:all .15s}
   button.ghost:hover{color:var(--text);border-color:var(--line-strong)}
-
+ 
   .status{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.5;min-height:18px;display:flex;align-items:center;gap:8px}
   .status .spin{width:11px;height:11px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex:none}
   @keyframes spin{to{transform:rotate(360deg)}}
   .status b{color:var(--accent);font-weight:500}
-
+ 
   .legend{display:none;flex-direction:column;gap:7px}
   .legend.show{display:flex}
   .legend .bar{height:8px;border-radius:6px;border:1px solid var(--line)}
   .legend .bar.hot{background:linear-gradient(90deg,rgba(255,224,150,.5),rgba(233,138,80,.8),rgba(214,64,58,.95))}
   .legend .bar.cold{background:linear-gradient(90deg,rgba(168,214,236,.5),rgba(98,150,224,.8),rgba(82,86,196,.95))}
   .legend .scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted)}
-
+ 
   .foot{font-family:var(--mono);font-size:10px;color:#5d6873;line-height:1.5;border-top:1px solid var(--line);padding-top:11px}
   .foot b{color:var(--muted);font-weight:400}
   .badge{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#0b0f13;background:var(--accent);border-radius:5px;padding:2px 6px;margin-left:6px}
-
+ 
   .ref-dot{position:relative;width:16px;height:16px}
   .ref-dot::before{content:"";position:absolute;inset:0;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(94,211,196,.25),0 0 14px rgba(94,211,196,.7)}
   .ref-dot::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1.5px solid var(--accent);opacity:.6;animation:pulse 2.2s ease-out infinite}
   @keyframes pulse{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
-
+ 
   .leaflet-image-layer{transition:opacity .5s ease}
-
+ 
   @media (prefers-reduced-motion:reduce){
     .ref-dot::after{animation:none;opacity:.4}
     .leaflet-image-layer{transition:none}
     .status .spin{animation-duration:1.4s}
   }
-  @media (max-width:480px){
-    .panel{top:10px;left:10px;width:calc(100vw - 20px)}
-    .readout .temp{font-size:26px}
+  /* --- Barre/poignee du tiroir (mobile uniquement) --- */
+  .peek{display:none}
+ 
+  /* --- Mobile : panneau en bottom sheet --- */
+  @media (max-width:640px){
+    :root{ --peek:60px }
+    .panel{
+      top:auto; left:0; right:0; bottom:0; width:100%; max-width:none;
+      max-height:84vh; overflow:visible;
+      border-radius:18px 18px 0 0; border-bottom:none;
+      transform:translateY(calc(100% - var(--peek)));
+      transition:transform .34s cubic-bezier(.32,.72,0,1);
+      box-shadow:0 -12px 40px -16px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .panel.open{ transform:translateY(0) }
+    .peek{
+      display:flex; align-items:center; gap:10px; width:100%; height:var(--peek);
+      background:none; border:none; color:var(--text); padding:14px 18px 0;
+      cursor:pointer; position:relative; text-align:left; font-family:var(--display);
+    }
+    .peek .grip{
+      position:absolute; top:8px; left:50%; transform:translateX(-50%);
+      width:38px; height:4px; border-radius:4px; background:var(--line-strong);
+    }
+    .peek-text{
+      flex:1; font-size:13.5px; color:var(--muted);
+      overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+    }
+    .peek-text b{ color:var(--text); font-weight:500 }
+    .peek-chev{ width:18px; height:18px; color:var(--muted); flex:none; transition:transform .3s }
+    .panel.open .peek-chev{ transform:rotate(180deg) }
+    .panel-scroll{ max-height:calc(84vh - var(--peek)); overflow:auto; overscroll-behavior:contain }
+    .panel-head{ padding-top:6px }
+    .readout .temp{ font-size:26px }
+    .leaflet-bottom{ bottom:var(--peek) }   /* garde l'attribution visible au-dessus du tiroir */
+  }
+  @media (prefers-reduced-motion:reduce){
+    .panel{ transition:none }
+    .peek-chev{ transition:none }
   }
 </style>
 </head>
 <body>
-
+ 
 <div id="map"></div>
-
+ 
 <aside class="panel" aria-label="Panneau de comparaison thermique">
+  <button class="peek" id="peek" aria-expanded="false" aria-label="Ouvrir ou fermer le panneau">
+    <span class="grip"></span>
+    <span class="peek-text" id="peek-text">Touchez la carte ou recherchez un lieu</span>
+    <svg class="peek-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 15 6-6 6 6"/></svg>
+  </button>
+  <div class="panel-scroll">
   <div class="panel-head">
     <p class="eyebrow">Comparateur thermique · temps reel</p>
     <h1 class="title">Isotherme</h1>
     <p class="subtitle">Choisis un lieu, puis revele en degrade partout ou il fait plus chaud ou plus froid qu'ici, maintenant.</p>
   </div>
-
+ 
   <div class="panel-body">
     <div class="field">
       <label class="lab" for="q">1 · Lieu de reference</label>
@@ -161,7 +524,7 @@
         …ou <b>clique directement sur la carte</b>.
       </p>
     </div>
-
+ 
     <div class="field">
       <label class="lab">Reference</label>
       <div id="readout" class="readout empty">
@@ -172,7 +535,7 @@
         <div class="temp" id="ref-temp">--<span class="u">°C</span></div>
       </div>
     </div>
-
+ 
     <div class="field">
       <label class="lab">2 · Reveler les zones</label>
       <div class="seg">
@@ -180,7 +543,7 @@
         <button id="btn-cold" data-mode="cold" disabled><span class="dot"></span>Plus froid</button>
       </div>
     </div>
-
+ 
     <div class="row">
       <div class="opacity">
         <label for="opa">Intensite</label>
@@ -188,18 +551,19 @@
       </div>
       <button id="clear" class="ghost">Effacer</button>
     </div>
-
+ 
     <div id="status" class="status"></div>
-
+ 
     <div id="legend" class="legend">
       <div class="bar" id="legend-bar"></div>
       <div class="scale"><span>egal a la reference</span><span id="legend-max">+20 °C</span></div>
     </div>
-
+ 
     <div id="foot" class="foot">Chargement des donnees…</div>
   </div>
+  </div>
 </aside>
-
+ 
 <script>
 /* =========================================================================
    ISOTHERME
@@ -211,7 +575,7 @@
    - Si data/temps.json est absent (ouverture en local sans backend),
      bascule sur une grille de demonstration recuperee une seule fois.
    ========================================================================= */
-
+ 
 const CFG = {
   dataUrl: './data/temps.json',
   tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -223,35 +587,59 @@ const CFG = {
   // grille de demonstration (fallback local) :
   demoRes: 3, demoLatMin: -58, demoLatMax: 82
 };
-
+ 
 /* ---------- Carte ---------- */
 const map = L.map('map', { zoomControl:true, worldCopyJump:true, minZoom:2, maxBounds:[[-89,-200],[89,200]] })
   .setView([30, 5], 3);
 L.tileLayer(CFG.tileUrl, { attribution:CFG.tileAttr, subdomains:'abcd', maxZoom:19, noWrap:true }).addTo(map);
-
+map.zoomControl.setPosition('topright');
+ 
 let heatOverlay = null; // L.imageOverlay
-
+ 
 /* ---------- Etat ---------- */
 let GRID = null;   // {res, latMin, latMax, lonMin, lonMax, nx, ny, temps:Float32Array, generated, demo}
 let ref = null;    // {lat, lon, temp, name}
 let mode = null;   // 'hot' | 'cold'
 let intensity = 0.85;
-
+ 
 /* ---------- DOM ---------- */
 const el = id => document.getElementById(id);
 const qInput=el('q'), suggBox=el('sugg');
 const readout=el('readout'), refName=el('ref-name'), refCoord=el('ref-coord'), refTemp=el('ref-temp');
 const btnHot=el('btn-hot'), btnCold=el('btn-cold'), opaSlider=el('opa'), clearBtn=el('clear');
 const statusEl=el('status'), legend=el('legend'), legendBar=el('legend-bar'), legendMax=el('legend-max'), foot=el('foot');
-
+ 
+/* ---------- Bottom sheet mobile ---------- */
+const panel = document.querySelector('.panel');
+const peek = el('peek'), peekText = el('peek-text');
+const mq = window.matchMedia('(max-width:640px)');
+const isMobile = () => mq.matches;
+function openSheet(open){
+  if(!isMobile()) return;
+  panel.classList.toggle('open', open);
+  peek.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+peek.addEventListener('click', () => openSheet(!panel.classList.contains('open')));
+function updatePeek(){
+  if(ref && ref.temp!=null){
+    const short = (ref.name||'').split(',')[0].trim() || 'Lieu';
+    const tag = mode ? (mode==='hot' ? ' · plus chaud' : ' · plus froid') : '';
+    peekText.innerHTML = `<b>${escapeHtml(short)}</b> · ${ref.temp.toFixed(1)} °C${tag}`;
+  } else if(ref){
+    peekText.innerHTML = `<b>${escapeHtml((ref.name||'Lieu').split(',')[0])}</b>`;
+  } else {
+    peekText.textContent = 'Touchez la carte ou recherchez un lieu';
+  }
+}
+ 
 /* canvas de rasterisation (hors ecran) */
 const rc = document.createElement('canvas');
 const rctx = rc.getContext('2d');
-
+ 
 /* marqueur */
 const refIcon = L.divIcon({ className:'', html:'<div class="ref-dot"></div>', iconSize:[16,16], iconAnchor:[8,8] });
 let refMarker=null;
-
+ 
 /* =================== Chargement des donnees =================== */
 init();
 async function init(){
@@ -267,7 +655,7 @@ async function init(){
     await loadDemoGrid();
   }
 }
-
+ 
 function normalizeGrid(j, demo){
   return {
     res:j.res, latMin:j.latMin, latMax:j.latMax, lonMin:j.lonMin, lonMax:j.lonMax,
@@ -275,7 +663,7 @@ function normalizeGrid(j, demo){
     generated:j.generated, source:j.source, demo
   };
 }
-
+ 
 function onGridReady(){
   const when = GRID.generated ? new Date(GRID.generated) : null;
   const ago = when ? freshness(when) : '';
@@ -284,14 +672,14 @@ function onGridReady(){
     : `${escapeHtml(GRID.source || 'Donnees meteo')} · grille ${GRID.res}°<br><b>Valide ${ago}.</b>`;
   setStatus('Commence par choisir un lieu de reference.');
 }
-
+ 
 function freshness(d){
   const m = Math.round((Date.now()-d.getTime())/60000);
   if(m<2) return 'a l\'instant';
   if(m<60) return `il y a ${m} min`;
   const h=Math.round(m/60); return `il y a ${h} h`;
 }
-
+ 
 /* =================== Fallback : grille de demo (live, 1 fois) =================== */
 async function loadDemoGrid(){
   setStatus('<span class="spin"></span>Aucune donnee statique — recolte de demonstration en cours…');
@@ -301,13 +689,13 @@ async function loadDemoGrid(){
   for(let lon=lonMin; lon<lonMax-1e-9; lon+=res) lons.push(+lon.toFixed(3));
   const ny=lats.length, nx=lons.length;
   const temps=new Float32Array(nx*ny).fill(NaN);
-
+ 
   // liste de points -> requetes Open-Meteo par lots (une seule fois)
   const pts=[];
   for(let j=0;j<ny;j++) for(let i=0;i<nx;i++) pts.push({i,j,lat:lats[j],lon:lons[i]});
   const chunk=200, chunks=[];
   for(let k=0;k<pts.length;k+=chunk) chunks.push(pts.slice(k,k+chunk));
-
+ 
   let done=0, ok=0;
   let next=0;
   async function worker(){
@@ -326,7 +714,7 @@ async function loadDemoGrid(){
     }
   }
   await Promise.all(Array.from({length:3}, worker));
-
+ 
   if(ok===0){
     setStatus('Impossible de recuperer des donnees (reseau ou limite API). Heberge le backend, puis recharge.');
     foot.innerHTML = 'Aucune donnee disponible.';
@@ -335,17 +723,17 @@ async function loadDemoGrid(){
   GRID = { res, latMin, latMax, lonMin, lonMax, nx, ny, temps, generated:new Date().toISOString(), demo:true };
   onGridReady();
 }
-
+ 
 /* =================== Geocodage (Photon) =================== */
 let searchTimer=null, activeIdx=-1, currentSuggestions=[];
-
+ 
 qInput.addEventListener('input', ()=>{
   const q=qInput.value.trim();
   clearTimeout(searchTimer);
   if(q.length<3){ closeSuggestions(); return; }
   searchTimer=setTimeout(()=>geocode(q), 350);
 });
-
+ 
 async function geocode(q){
   try{
     const url=`${CFG.photon}/api/?q=${encodeURIComponent(q)}&limit=6&lang=fr`;
@@ -357,13 +745,13 @@ async function geocode(q){
     })));
   }catch(e){ closeSuggestions(); }
 }
-
+ 
 function photonLabel(p){
   const head=[p.name, p.street && !p.name?.includes(p.street)?p.street:null].filter(Boolean).join(' ');
   const tail=[p.city||p.town||p.village||p.county, p.state, p.country].filter(Boolean).join(', ');
   return { head: head||p.city||p.country||'Lieu', tail };
 }
-
+ 
 function renderSuggestions(items){
   currentSuggestions=items; activeIdx=-1;
   if(!items.length){ closeSuggestions(); return; }
@@ -373,7 +761,7 @@ function renderSuggestions(items){
   [...suggBox.querySelectorAll('.sugg')].forEach(n=>n.addEventListener('click',()=>pickSuggestion(+n.dataset.i)));
 }
 function closeSuggestions(){ suggBox.classList.remove('open'); suggBox.innerHTML=''; currentSuggestions=[]; activeIdx=-1; }
-
+ 
 qInput.addEventListener('keydown', e=>{
   if(!suggBox.classList.contains('open')) return;
   const items=[...suggBox.querySelectorAll('.sugg')];
@@ -383,7 +771,7 @@ qInput.addEventListener('keydown', e=>{
   else if(e.key==='Escape'){ closeSuggestions(); }
 });
 function hi(items){ items.forEach((n,i)=>n.classList.toggle('active',i===activeIdx)); }
-
+ 
 function pickSuggestion(i){
   const it=currentSuggestions[i]; if(!it) return;
   const label=[it.label.head, it.label.tail].filter(Boolean).join(', ');
@@ -391,7 +779,7 @@ function pickSuggestion(i){
   setReference(it.lat, it.lon, label, true);
 }
 document.addEventListener('click', e=>{ if(!e.target.closest('.search-wrap')) closeSuggestions(); });
-
+ 
 async function reverseGeocode(lat, lon){
   try{
     const r=await fetch(`${CFG.photon}/reverse?lat=${lat}&lon=${lon}&lang=fr`); if(!r.ok) throw 0;
@@ -399,7 +787,7 @@ async function reverseGeocode(lat, lon){
     const l=photonLabel(f.properties); return [l.head,l.tail].filter(Boolean).join(', ');
   }catch(e){ return null; }
 }
-
+ 
 /* =================== Reference =================== */
 map.on('click', async e=>{
   const {lat,lng}=e.latlng;
@@ -408,19 +796,20 @@ map.on('click', async e=>{
   if(ref && ref.lat===lat && ref.lon===lng){
     ref.name = name || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
     refName.textContent=ref.name;
+    updatePeek();
   }
 });
-
+ 
 function setReference(lat, lon, name, pan){
   ref={ lat, lon, name, temp:null };
   readout.classList.remove('empty');
   refName.textContent=name;
   refCoord.textContent=`${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-
+ 
   if(!refMarker) refMarker=L.marker([lat,lon],{icon:refIcon,keyboard:false}).addTo(map);
   else refMarker.setLatLng([lat,lon]);
   if(pan) map.flyTo([lat,lon], Math.max(map.getZoom(),4), {duration:.8});
-
+ 
   // temperature de reference = valeur du champ interpole au point (aucun reseau)
   const t = GRID ? sample(lat,lon) : NaN;
   if(Number.isFinite(t)){
@@ -434,8 +823,10 @@ function setReference(lat, lon, name, pan){
     btnHot.disabled=true; btnCold.disabled=true;
     setStatus(GRID ? 'Ce point est hors de la grille de donnees. Choisis un autre lieu.' : 'Donnees pas encore chargees…');
   }
+  updatePeek();
+  if(Number.isFinite(t) && !mode) openSheet(true);   // surface chaud/froid au premier choix
 }
-
+ 
 /* =================== Echantillonnage bilineaire =================== */
 function sample(lat, lon){
   if(!GRID) return NaN;
@@ -454,22 +845,28 @@ function sample(lat, lon){
   add(v00,(1-fx)*(1-fy)); add(v10,fx*(1-fy)); add(v01,(1-fx)*fy); add(v11,fx*fy);
   return w>0 ? sum/w : NaN;
 }
-
+ 
 /* =================== Rendu heatmap =================== */
 btnHot.addEventListener('click', ()=>toggleMode('hot'));
 btnCold.addEventListener('click', ()=>toggleMode('cold'));
 opaSlider.addEventListener('input', ()=>{ intensity=+opaSlider.value; if(mode) render(); });
 clearBtn.addEventListener('click', clearReveal);
-
-function toggleMode(m){ if(mode===m){ clearReveal(); return; } mode=m; btnHot.classList.toggle('on',m==='hot'); btnCold.classList.toggle('on',m==='cold'); render(); }
-
+ 
+function toggleMode(m){
+  if(mode===m){ clearReveal(); return; }
+  mode=m; btnHot.classList.toggle('on',m==='hot'); btnCold.classList.toggle('on',m==='cold');
+  render();
+  openSheet(false);   // referme le tiroir pour devoiler la carte
+}
+ 
 function clearReveal(){
   mode=null; btnHot.classList.remove('on'); btnCold.classList.remove('on');
   if(heatOverlay){ map.removeLayer(heatOverlay); heatOverlay=null; }
   legend.classList.remove('show');
   if(ref?.temp!=null) setStatus(`Reference a <b>${ref.temp.toFixed(1)} °C</b>. Choisis un mode.`);
+  updatePeek();
 }
-
+ 
 const GRAD = {
   hot:  [[255,224,150],[233,138,80],[214,64,58]],
   cold: [[168,214,236],[98,150,224],[82,86,196]]
@@ -479,14 +876,14 @@ function ramp(m, t){ // t in 0..1 sur 3 paliers
   const a=s[seg], b=s[seg+1];
   return [a[0]+(b[0]-a[0])*lt, a[1]+(b[1]-a[1])*lt, a[2]+(b[2]-a[2])*lt];
 }
-
+ 
 function latToMercY(lat){ const r=Math.max(-85.05,Math.min(85.05,lat))*Math.PI/180; return Math.log(Math.tan(Math.PI/4+r/2)); }
-
+ 
 function render(){
   if(!GRID || !ref || ref.temp==null) return;
   const {latMin,latMax,lonMin,lonMax}=GRID;
   const refT=ref.temp, m=mode;
-
+ 
   // dimensions : warp Mercator pour aligner sur Leaflet
   const W=CFG.rasterW;
   const yTop=latToMercY(latMax), yBot=latToMercY(latMin);
@@ -495,7 +892,7 @@ function render(){
   H=Math.max(256,Math.min(H,2048));
   rc.width=W; rc.height=H;
   const img=rctx.createImageData(W,H), d=img.data;
-
+ 
   let count=0;
   for(let j=0;j<H;j++){
     const my=yTop+(yBot-yTop)*(j/(H-1));
@@ -517,7 +914,7 @@ function render(){
   }
   rctx.putImageData(img,0,0);
   const url=rc.toDataURL();
-
+ 
   const bounds=[[latMin,lonMin],[latMax,lonMax]];
   if(!heatOverlay){
     heatOverlay=L.imageOverlay(url, bounds, {opacity:0, interactive:false, className:'heat'}).addTo(map);
@@ -525,16 +922,18 @@ function render(){
   }else{
     heatOverlay.setUrl(url); heatOverlay.setBounds(bounds); heatOverlay.setOpacity(1);
   }
-
+ 
   legendBar.className='bar '+(m==='hot'?'hot':'cold');
   legend.classList.add('show'); legendMax.textContent=`+${CFG.cap} °C`;
   const word=m==='hot'?'plus chaud':'plus froid';
   setStatus(`Zones ou il fait <b>${word}</b> que <b>${refT.toFixed(1)} °C</b>, maintenant.`);
+  updatePeek();
 }
-
+ 
 /* ---------- utils ---------- */
 function setStatus(html){ statusEl.innerHTML=html||''; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 </script>
 </body>
 </html>
+ 
