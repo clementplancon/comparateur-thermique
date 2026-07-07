@@ -527,7 +527,11 @@ function sample(lat, lon){
   const {gx,gy}=p;
   const x0=Math.floor(gx), y0=Math.floor(gy);
   const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
-  if(land && (land[y0*nx+x0]!==1 || land[y0*nx+x1]!==1 || land[y1*nx+x0]!==1 || land[y1*nx+x1]!==1)) return NaN;
+  if(land){
+    const land00=land[y0*nx+x0], land10=land[y0*nx+x1];
+    const land01=land[y1*nx+x0], land11=land[y1*nx+x1];
+    if(land00!==1 || land10!==1 || land01!==1 || land11!==1) return NaN;
+  }
   const fx=gx-x0, fy=gy-y0;
   const v00=temps[y0*nx+x0], v10=temps[y0*nx+x1], v01=temps[y1*nx+x0], v11=temps[y1*nx+x1];
   // moyenne ponderee en ignorant les NaN

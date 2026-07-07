@@ -163,10 +163,11 @@ def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle
     mask_lats, mask_lons, land = normalize_field(land_lats, land_lons, land_values)
     if temp.shape != land.shape:
         raise SystemExit(f"Le masque terre/mer ({land.shape}) ne correspond pas à la grille temperature ({temp.shape}).")
-    if not (
+    axes_match = (
         np.allclose(lats, mask_lats, rtol=0, atol=AXIS_ATOL)
         and np.allclose(lons, mask_lons, rtol=0, atol=AXIS_ATOL)
-    ):
+    )
+    if not axes_match:
         raise SystemExit(
             "Le masque terre/mer ne correspond pas aux axes temperature "
             f"(lat {mask_lats[0]}..{mask_lats[-1]}, lon {mask_lons[0]}..{mask_lons[-1]} "
