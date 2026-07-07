@@ -139,15 +139,21 @@ def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle
     """Normalise, masque les oceans, et serialise."""
     lats, lons, temp = normalize_field(temp_lats, temp_lons, kelvin)
     mask_lats, mask_lons, land = normalize_field(land_lats, land_lons, land_values)
-    if temp.shape != land.shape or not np.allclose(lats, mask_lats) or not np.allclose(lons, mask_lons):
-        raise SystemExit("Le masque terre/mer ne correspond pas a la grille temperature.")
+    if temp.shape != land.shape:
+        raise SystemExit(f"Le masque terre/mer ({land.shape}) ne correspond pas a la grille temperature ({temp.shape}).")
+    if not np.allclose(lats, mask_lats) or not np.allclose(lons, mask_lons):
+        raise SystemExit(
+            "Le masque terre/mer ne correspond pas aux axes temperature "
+            f"(lat {mask_lats[0]}..{mask_lats[-1]}, lon {mask_lons[0]}..{mask_lons[-1]} "
+            f"vs lat {lats[0]}..{lats[-1]}, lon {lons[0]}..{lons[-1]})."
+        )
 
     land_mask = land >= 0.5
     arr = np.where(land_mask, temp - 273.15, np.nan)
     res = round(float(abs(lats[0] - lats[1])), 4)
     ny, nx = arr.shape
     temps = [round(float(v), 1) if np.isfinite(v) else None for v in arr.ravel()]
-    land_serialized = [1 if bool(v) else 0 for v in land_mask.ravel()]
+    land_serialized = land_mask.astype("uint8").ravel().tolist()
 
     valid = (cycle + dt.timedelta(hours=fhour)).replace(microsecond=0)
     return {

@@ -509,13 +509,10 @@ function setReference(lat, lon, name, pan){
  
 /* =================== Echantillonnage bilineaire =================== */
 function sample(lat, lon){
-  if(!GRID) return NaN;
-  const {res,latMin,latMax,lonMin,nx,ny,temps}=GRID;
-  if(lat<latMin || lat>latMax) return NaN;
-  if(!sampleLand(lat,lon)) return NaN;
-  let gx=(lon-lonMin)/res; let gy=(latMax-lat)/res;   // row 0 = latMax
-  if(gx<0) gx+=360/res;                                // wrap longitude
-  if(gx>nx-1) gx-=nx; if(gx<0) gx=0;
+  const p=gridPoint(lat,lon);
+  if(!p || !sampleLandPoint(p)) return NaN;
+  const {nx,ny,temps}=GRID;
+  const {gx,gy}=p;
   const x0=Math.floor(gx), y0=Math.floor(gy);
   const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
   const fx=gx-x0, fy=gy-y0;
@@ -527,13 +524,24 @@ function sample(lat, lon){
   return w>0 ? sum/w : NaN;
 }
 
-function sampleLand(lat, lon){
-  if(!GRID?.land) return true;
-  const {res,latMin,latMax,lonMin,nx,ny,land}=GRID;
-  if(lat<latMin || lat>latMax) return false;
+function gridPoint(lat, lon){
+  if(!GRID) return null;
+  const {res,latMin,latMax,lonMin,nx}=GRID;
+  if(lat<latMin || lat>latMax) return null;
   let gx=(lon-lonMin)/res; let gy=(latMax-lat)/res;
   if(gx<0) gx+=360/res;
   if(gx>nx-1) gx-=nx; if(gx<0) gx=0;
+  return {gx,gy};
+}
+
+function sampleLand(lat, lon){
+  const p=gridPoint(lat,lon);
+  return p ? sampleLandPoint(p) : false;
+}
+
+function sampleLandPoint({gx,gy}){
+  if(!GRID?.land) return true;
+  const {nx,ny,land}=GRID;
   const x=Math.max(0,Math.min(nx-1,Math.round(gx)));
   const y=Math.max(0,Math.min(ny-1,Math.round(gy)));
   return land[y*nx+x]===1;
