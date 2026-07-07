@@ -350,10 +350,12 @@ function decodeLand(j){
   const land=new Uint8Array(j.nx*j.ny);
   let offset=0, value=j.landStart?1:0;
   for(const len of j.landRle){
+    if(offset+len>land.length) throw new Error('Masque terre/mer invalide');
     land.fill(value, offset, offset+len);
     offset+=len; value=value?0:1;
   }
-  return offset===land.length ? land : null;
+  if(offset!==land.length) throw new Error('Masque terre/mer incomplet');
+  return land;
 }
  
 function onGridReady(){
@@ -528,6 +530,7 @@ function sample(lat, lon){
   const x0=Math.floor(gx), y0=Math.floor(gy);
   const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
   if(land){
+    // Strict: aucun pixel ne doit etre colore si l'interpolation toucherait l'ocean.
     const land00=land[y0*nx+x0], land10=land[y0*nx+x1];
     const land01=land[y1*nx+x0], land11=land[y1*nx+x1];
     if(land00!==1 || land10!==1 || land01!==1 || land11!==1) return NaN;
