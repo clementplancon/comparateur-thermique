@@ -137,15 +137,35 @@ def normalize_field(lats, lons, values):
     lats = lats[mask]; arr = arr[mask, :]
     return lats, lons, arr
 
+def encode_rle(mask):
+    """Encode un masque booleen en longueurs alternees pour alleger le JSON."""
+    flat = mask.astype("uint8").ravel()
+    if flat.size == 0:
+        return 0, []
+    start = int(flat[0])
+    runs = []
+    current = start
+    count = 0
+    for v in flat:
+        v = int(v)
+        if v == current:
+            count += 1
+        else:
+            runs.append(count)
+            current = v
+            count = 1
+    runs.append(count)
+    return start, runs
+
 def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle, fhour):
     """Normalise, masque les oceans, et serialise."""
     lats, lons, temp = normalize_field(temp_lats, temp_lons, kelvin)
     mask_lats, mask_lons, land = normalize_field(land_lats, land_lons, land_values)
     if temp.shape != land.shape:
         raise SystemExit(f"Le masque terre/mer ({land.shape}) ne correspond pas à la grille temperature ({temp.shape}).")
-    if (
-        not np.allclose(lats, mask_lats, rtol=0, atol=AXIS_ATOL)
-        or not np.allclose(lons, mask_lons, rtol=0, atol=AXIS_ATOL)
+    if not (
+        np.allclose(lats, mask_lats, rtol=0, atol=AXIS_ATOL)
+        and np.allclose(lons, mask_lons, rtol=0, atol=AXIS_ATOL)
     ):
         raise SystemExit(
             "Le masque terre/mer ne correspond pas aux axes temperature "
@@ -158,7 +178,7 @@ def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle
     res = round(float(abs(lats[0] - lats[1])), 4)
     ny, nx = arr.shape
     temps = [round(float(v), 1) if np.isfinite(v) else None for v in arr.ravel()]
-    land_serialized = land_mask.astype("uint8").ravel().tolist()
+    land_start, land_rle = encode_rle(land_mask)
 
     valid = (cycle + dt.timedelta(hours=fhour)).replace(microsecond=0)
     return {
@@ -171,7 +191,8 @@ def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle
         "lonMax": round(float(lons[-1] + res), 4),
         "nx": nx, "ny": ny,
         "temps": temps,
-        "land": land_serialized,
+        "landStart": land_start,
+        "landRle": land_rle,
     }
 
 def main():

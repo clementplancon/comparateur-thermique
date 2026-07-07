@@ -339,9 +339,21 @@ function normalizeGrid(j, demo){
   return {
     res:j.res, latMin:j.latMin, latMax:j.latMax, lonMin:j.lonMin, lonMax:j.lonMax,
     nx:j.nx, ny:j.ny, temps:Float32Array.from(j.temps, v=> v==null?NaN:v),
-    land:j.land ? Uint8Array.from(j.land) : null,
+    land:decodeLand(j),
     generated:j.generated, source:j.source, demo
   };
+}
+
+function decodeLand(j){
+  if(j.land) return Uint8Array.from(j.land);
+  if(!j.landRle) return null;
+  const land=new Uint8Array(j.nx*j.ny);
+  let offset=0, value=j.landStart?1:0;
+  for(const len of j.landRle){
+    land.fill(value, offset, offset+len);
+    offset+=len; value=value?0:1;
+  }
+  return offset===land.length ? land : null;
 }
  
 function onGridReady(){
@@ -513,13 +525,9 @@ function sample(lat, lon){
   if(!p) return NaN;
   const {nx,ny,temps,land}=GRID;
   const {gx,gy}=p;
-  if(land){
-    const lx=Math.max(0,Math.min(nx-1,Math.round(gx)));
-    const ly=Math.max(0,Math.min(ny-1,Math.round(gy)));
-    if(land[ly*nx+lx]!==1) return NaN;
-  }
   const x0=Math.floor(gx), y0=Math.floor(gy);
   const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
+  if(land && (land[y0*nx+x0]!==1 || land[y0*nx+x1]!==1 || land[y1*nx+x0]!==1 || land[y1*nx+x1]!==1)) return NaN;
   const fx=gx-x0, fy=gy-y0;
   const v00=temps[y0*nx+x0], v10=temps[y0*nx+x1], v01=temps[y1*nx+x0], v11=temps[y1*nx+x1];
   // moyenne ponderee en ignorant les NaN

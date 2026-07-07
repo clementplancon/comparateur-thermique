@@ -57,7 +57,7 @@ direct via Open-Meteo (grossiere, une seule fois) juste pour visualiser le rendu
 
 `index.html` : `cap` (ecart °C de saturation des couleurs), `rasterW` (finesse du
 canvas de rendu), palettes `GRAD`, opacite via le curseur « Intensite ». Le rendu
-utilise aussi le champ `land` de `data/temps.json` pour ne pas colorer l'ocean.
+utilise aussi le masque `landRle` de `data/temps.json` pour ne pas colorer l'ocean.
 
 ## Choix du champ « maintenant »
 
