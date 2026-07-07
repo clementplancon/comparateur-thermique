@@ -25,7 +25,8 @@ import xarray as xr
 RES_TAG = "0p50"             # "0p50" (0.5°, conseille) ou "0p25" (0.25°, 4x plus lourd)
 STEP_H  = 3                  # pas des echeances : 3 h pour 0p50, 1 h possible pour 0p25
 LAT_MIN, LAT_MAX = -60, 84   # poles ignores (aucune ville au-dela)
-LAND_THRESHOLD = 0.5          # GFS LAND >= 0,5 : maille majoritairement terrestre
+LAND_THRESHOLD = 0.5          # GFS LAND >= 0.5 : maille majoritairement terrestre
+AXIS_ATOL = 1e-6              # tolerance sur les axes lat/lon apres normalisation
 OUT_PATH = "data/temps.json"
 UA = {"User-Agent": "isotherme/1.0 (open-data temperature grid)"}
 
@@ -141,8 +142,11 @@ def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle
     lats, lons, temp = normalize_field(temp_lats, temp_lons, kelvin)
     mask_lats, mask_lons, land = normalize_field(land_lats, land_lons, land_values)
     if temp.shape != land.shape:
-        raise SystemExit(f"Le masque terre/mer ({land.shape}) ne correspond pas a la grille temperature ({temp.shape}).")
-    if not np.allclose(lats, mask_lats) or not np.allclose(lons, mask_lons):
+        raise SystemExit(f"Le masque terre/mer ({land.shape}) ne correspond pas à la grille temperature ({temp.shape}).")
+    if (
+        not np.allclose(lats, mask_lats, rtol=0, atol=AXIS_ATOL)
+        or not np.allclose(lons, mask_lons, rtol=0, atol=AXIS_ATOL)
+    ):
         raise SystemExit(
             "Le masque terre/mer ne correspond pas aux axes temperature "
             f"(lat {mask_lats[0]}..{mask_lats[-1]}, lon {mask_lons[0]}..{mask_lons[-1]} "
