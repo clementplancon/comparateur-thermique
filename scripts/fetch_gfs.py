@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 Recolte la temperature a 2 m de toute la planete "maintenant" depuis le modele
-GFS de la NOAA (domaine public, sans cle) et ecrit data/temps.json.
+GFS de la NOAA (domaine public, sans cle), masque les oceans, et ecrit
+data/temps.json.
 
 Source : miroirs open-data AWS S3 / Google (fichiers statiques, fiables, sans
 rate-limit, requetes par plage). On lit l'index .idx pour ne telecharger que le
-message GRIB "temperature 2 m" (~250 Ko), puis on le decode.
+messages GRIB "temperature 2 m" et "masque terre/mer", puis on les decode.
 
 Pourquoi pas Open-Meteo : son offre gratuite facture *un appel par point*
 (10 000/jour, 600/min) -> un champ mondial detaille est impossible.
@@ -44,11 +45,11 @@ def http_get(url, rng=None, timeout=120):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
-def tmp2m_range(idx_text):
-    """Trouve l'octet de debut/fin du message TMP a 2 m dans l'index .idx."""
+def field_range(idx_text, marker):
+    """Trouve l'octet de debut/fin d'un message GRIB dans l'index .idx."""
     lines = [l for l in idx_text.splitlines() if l.strip()]
     for i, ln in enumerate(lines):
-        if ":TMP:2 m above ground:" in ln:
+        if marker in ln:
             start = int(ln.split(":")[1])
             end = None
             if i + 1 < len(lines):
@@ -58,8 +59,8 @@ def tmp2m_range(idx_text):
             return start, end
     return None, None
 
-def fetch_message(cycle, fhour):
-    """Pour un (cycle, echeance) donne, telecharge le seul message TMP 2 m.
+def fetch_message(cycle, fhour, marker, label):
+    """Pour un (cycle, echeance) donne, telecharge un seul message GRIB.
     Renvoie les octets GRIB ou None si indisponible sur tous les miroirs."""
     key = key_for(cycle, fhour)
     for host in HOSTS:
@@ -70,9 +71,9 @@ def fetch_message(cycle, fhour):
         except Exception as e:
             print(f"    idx absent ({host.split('//')[1].split('/')[0]}): {e}")
             continue
-        s, e = tmp2m_range(idx)
+        s, e = field_range(idx, marker)
         if s is None:
-            print("    TMP 2 m introuvable dans l'index")
+            print(f"    {label} introuvable dans l'index")
             continue
         rng = f"{s}-{e-1}" if e else f"{s}-"
         try:
@@ -81,7 +82,7 @@ def fetch_message(cycle, fhour):
             print(f"    echec range: {ex}")
             continue
         if data[:4] == b"GRIB":
-            print(f"  ok via {host.split('//')[1].split('/')[0]} ({len(data)//1024} Ko)")
+            print(f"  {label} ok via {host.split('//')[1].split('/')[0]} ({len(data)//1024} Ko)")
             return data
         print("    octets non-GRIB")
     return None
@@ -95,19 +96,20 @@ def find_source():
         lead = (now - cyc).total_seconds() / 3600.0
         fhour = max(0, min(int(round(lead / STEP_H) * STEP_H), 120))
         print(f"  essai {cyc:%Y-%m-%d %H}Z f{fhour:03d} …")
-        data = fetch_message(cyc, fhour)
-        if data:
-            return cyc, fhour, data
+        temp = fetch_message(cyc, fhour, ":TMP:2 m above ground:", "TMP 2 m")
+        land = fetch_message(cyc, fhour, ":LAND:surface:", "masque terre/mer")
+        if temp and land:
+            return cyc, fhour, temp, land
     raise SystemExit("Aucun cycle GFS disponible sur les miroirs open-data.")
 
-def read_t2m(grib_bytes):
-    """Decode le champ 2 m (Kelvin) + axes lat/lon."""
+def read_field(grib_bytes):
+    """Decode un champ GRIB + axes lat/lon."""
     path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".grib2", delete=False) as f:
             f.write(grib_bytes); path = f.name
         ds = xr.open_dataset(path, engine="cfgrib", backend_kwargs={"indexpath": ""})
-        name = "t2m" if "t2m" in ds.data_vars else list(ds.data_vars)[0]
+        name = list(ds.data_vars)[0]
         da = ds[name]
         return da["latitude"].values, da["longitude"].values, da.values
     finally:
@@ -116,9 +118,9 @@ def read_t2m(grib_bytes):
                 try: os.unlink(p)
                 except OSError: pass
 
-def build(lats, lons, kelvin, cycle, fhour):
-    """Normalise (nord en haut, lon -180..180, crop) et serialise."""
-    arr = kelvin.astype("float64") - 273.15
+def normalize_field(lats, lons, values):
+    """Normalise (nord en haut, lon -180..180, crop)."""
+    arr = values.astype("float64")
     lats = np.asarray(lats, dtype="float64")
     lons = np.asarray(lons, dtype="float64")
 
@@ -131,10 +133,21 @@ def build(lats, lons, kelvin, cycle, fhour):
 
     mask = (lats <= LAT_MAX + 1e-6) & (lats >= LAT_MIN - 1e-6)
     lats = lats[mask]; arr = arr[mask, :]
+    return lats, lons, arr
 
+def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle, fhour):
+    """Normalise, masque les oceans, et serialise."""
+    lats, lons, temp = normalize_field(temp_lats, temp_lons, kelvin)
+    mask_lats, mask_lons, land = normalize_field(land_lats, land_lons, land_values)
+    if temp.shape != land.shape or not np.allclose(lats, mask_lats) or not np.allclose(lons, mask_lons):
+        raise SystemExit("Le masque terre/mer ne correspond pas a la grille temperature.")
+
+    land_mask = land >= 0.5
+    arr = np.where(land_mask, temp - 273.15, np.nan)
     res = round(float(abs(lats[0] - lats[1])), 4)
     ny, nx = arr.shape
     temps = [round(float(v), 1) if np.isfinite(v) else None for v in arr.ravel()]
+    land_serialized = [1 if bool(v) else 0 for v in land_mask.ravel()]
 
     valid = (cycle + dt.timedelta(hours=fhour)).replace(microsecond=0)
     return {
@@ -147,13 +160,15 @@ def build(lats, lons, kelvin, cycle, fhour):
         "lonMax": round(float(lons[-1] + res), 4),
         "nx": nx, "ny": ny,
         "temps": temps,
+        "land": land_serialized,
     }
 
 def main():
     print(f"GFS {RES_TAG} · temperature 2 m mondiale (miroirs open-data)")
-    cycle, fhour, grib = find_source()
-    lats, lons, kelvin = read_t2m(grib)
-    out = build(lats, lons, kelvin, cycle, fhour)
+    cycle, fhour, temp_grib, land_grib = find_source()
+    temp_lats, temp_lons, kelvin = read_field(temp_grib)
+    land_lats, land_lons, land_values = read_field(land_grib)
+    out = build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle, fhour)
 
     n_valid = sum(1 for v in out["temps"] if v is not None)
     if n_valid == 0:

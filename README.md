@@ -18,12 +18,13 @@ La solution est de **decoupler la donnee du visiteur** et d'utiliser une **sourc
    chaque heure, cote serveur. Il telecharge **un seul fichier GRIB2** du modele
    **GFS de la NOAA** (domaine public, sans cle) depuis les miroirs open-data
    **AWS S3 / Google**, en lisant l'index `.idx` pour ne telecharger que le message
-   GRIB "temperature 2 m" (~250 Ko), et ecrit `data/temps.json` : tout le globe au pas de
-   **0,5°** en un seul telechargement, **sans quota par point**.
+   GRIB "temperature 2 m" et le masque terre/mer, puis ecrit `data/temps.json` :
+   les temperatures terrestres au pas de **0,5°**, **sans quota par point**.
 2. Le site (`index.html`) charge ce **fichier statique unique**. Tous les visiteurs
    lisent le meme fichier -> **aucun appel meteo par visiteur, aucun rate-limit**.
 3. Le rendu heatmap est calcule dans le navigateur (interpolation bilineaire +
-   reprojection Mercator) et recolore **instantanement** au changement de lieu/mode.
+   reprojection Mercator) et recolore **instantanement** au changement de lieu/mode,
+   en ignorant les pixels situes sur l'ocean.
 
 ## Deploiement (5 min)
 
@@ -55,7 +56,8 @@ direct via Open-Meteo (grossiere, une seule fois) juste pour visualiser le rendu
 - `LAT_MIN / LAT_MAX` : zone couverte (poles ignores par defaut).
 
 `index.html` : `cap` (ecart °C de saturation des couleurs), `rasterW` (finesse du
-canvas de rendu), palettes `GRAD`, opacite via le curseur « Intensite ».
+canvas de rendu), palettes `GRAD`, opacite via le curseur « Intensite ». Le rendu
+utilise aussi le champ `land` de `data/temps.json` pour ne pas colorer l'ocean.
 
 ## Choix du champ « maintenant »
 
