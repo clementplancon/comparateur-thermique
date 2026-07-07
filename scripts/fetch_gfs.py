@@ -25,6 +25,7 @@ import xarray as xr
 RES_TAG = "0p50"             # "0p50" (0.5°, conseille) ou "0p25" (0.25°, 4x plus lourd)
 STEP_H  = 3                  # pas des echeances : 3 h pour 0p50, 1 h possible pour 0p25
 LAT_MIN, LAT_MAX = -60, 84   # poles ignores (aucune ville au-dela)
+LAND_THRESHOLD = 0.5          # GFS LAND >= 0,5 : maille majoritairement terrestre
 OUT_PATH = "data/temps.json"
 UA = {"User-Agent": "isotherme/1.0 (open-data temperature grid)"}
 
@@ -148,7 +149,7 @@ def build(temp_lats, temp_lons, kelvin, land_lats, land_lons, land_values, cycle
             f"vs lat {lats[0]}..{lats[-1]}, lon {lons[0]}..{lons[-1]})."
         )
 
-    land_mask = land >= 0.5
+    land_mask = land >= LAND_THRESHOLD
     arr = np.where(land_mask, temp - 273.15, np.nan)
     res = round(float(abs(lats[0] - lats[1])), 4)
     ny, nx = arr.shape

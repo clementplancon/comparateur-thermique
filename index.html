@@ -339,7 +339,7 @@ function normalizeGrid(j, demo){
   return {
     res:j.res, latMin:j.latMin, latMax:j.latMax, lonMin:j.lonMin, lonMax:j.lonMax,
     nx:j.nx, ny:j.ny, temps:Float32Array.from(j.temps, v=> v==null?NaN:v),
-    land:j.land ? Uint8Array.from(j.land, v=>v?1:0) : null,
+    land:j.land ? Uint8Array.from(j.land) : null,
     generated:j.generated, source:j.source, demo
   };
 }
