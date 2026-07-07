@@ -5,7 +5,7 @@ GFS de la NOAA (domaine public, sans cle), masque les oceans, et ecrit
 data/temps.json.
 
 Source : miroirs open-data AWS S3 / Google (fichiers statiques, fiables, sans
-rate-limit, requetes par plage). On lit l'index .idx pour ne telecharger que le
+rate-limit, requetes par plage). On lit l'index .idx pour ne telecharger que les
 messages GRIB "temperature 2 m" et "masque terre/mer", puis on les decode.
 
 Pourquoi pas Open-Meteo : son offre gratuite facture *un appel par point*
