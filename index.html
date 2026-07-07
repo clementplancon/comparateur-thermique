@@ -350,11 +350,11 @@ function decodeLand(j){
   const land=new Uint8Array(j.nx*j.ny);
   let offset=0, value=j.landStart?1:0;
   for(const len of j.landRle){
-    if(offset+len>land.length) throw new Error(`RLE terre/mer trop long : ${offset+len} cellules pour ${land.length} attendues`);
+    if(offset+len>land.length) throw new Error(`RLE terre/mer trop long : ${offset+len} cellules alors que ${land.length} sont attendues`);
     land.fill(value, offset, offset+len);
     offset+=len; value=value?0:1;
   }
-  if(offset!==land.length) throw new Error(`RLE terre/mer incomplet : ${offset} cellules decodees pour ${land.length} attendues`);
+  if(offset!==land.length) throw new Error(`RLE terre/mer incomplet : ${offset} cellules decodees alors que ${land.length} sont attendues`);
   return land;
 }
  
@@ -531,9 +531,10 @@ function sample(lat, lon){
   const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
   if(land){
     // Strict: aucun pixel ne doit etre colore si l'interpolation toucherait l'ocean.
-    const landAt=(x,y)=>land[y*nx+x];
-    const land00=landAt(x0,y0), land10=landAt(x1,y0);
-    const land01=landAt(x0,y1), land11=landAt(x1,y1);
+    const idx00=y0*nx+x0, idx10=y0*nx+x1;
+    const idx01=y1*nx+x0, idx11=y1*nx+x1;
+    const land00=land[idx00], land10=land[idx10];
+    const land01=land[idx01], land11=land[idx11];
     if(land00!==1 || land10!==1 || land01!==1 || land11!==1) return NaN;
   }
   const fx=gx-x0, fy=gy-y0;
