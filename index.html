@@ -276,7 +276,7 @@ map.zoomControl.setPosition('topright');
 let heatOverlay = null; // L.imageOverlay
  
 /* ---------- Etat ---------- */
-let GRID = null;   // {res, latMin, latMax, lonMin, lonMax, nx, ny, temps:Float32Array, generated, demo}
+let GRID = null;   // {res, latMin, latMax, lonMin, lonMax, nx, ny, temps:Float32Array, land:Uint8Array|null, generated, demo}
 let ref = null;    // {lat, lon, temp, name}
 let mode = null;   // 'hot' | 'cold'
 let intensity = 0.85;
@@ -339,8 +339,23 @@ function normalizeGrid(j, demo){
   return {
     res:j.res, latMin:j.latMin, latMax:j.latMax, lonMin:j.lonMin, lonMax:j.lonMax,
     nx:j.nx, ny:j.ny, temps:Float32Array.from(j.temps, v=> v==null?NaN:v),
+    land:decodeLand(j),
     generated:j.generated, source:j.source, demo
   };
+}
+
+function decodeLand(j){
+  if(j.land) return Uint8Array.from(j.land);
+  if(!j.landRle) return null;
+  const land=new Uint8Array(j.nx*j.ny);
+  let offset=0, value=j.landStart?1:0;
+  for(const len of j.landRle){
+    if(offset+len>land.length) throw new Error(`RLE terre/mer trop long : ${offset+len} cellules alors que ${land.length} sont attendues`);
+    land.fill(value, offset, offset+len);
+    offset+=len; value=value?0:1;
+  }
+  if(offset!==land.length) throw new Error(`RLE terre/mer incomplet : ${offset} cellules decodees alors que ${land.length} sont attendues`);
+  return land;
 }
  
 function onGridReady(){
@@ -399,7 +414,7 @@ async function loadDemoGrid(){
     foot.innerHTML = 'Aucune donnee disponible.';
     return;
   }
-  GRID = { res, latMin, latMax, lonMin, lonMax, nx, ny, temps, generated:new Date().toISOString(), demo:true };
+  GRID = { res, latMin, latMax, lonMin, lonMax, nx, ny, temps, land:null, generated:new Date().toISOString(), demo:true };
   onGridReady();
 }
  
@@ -508,14 +523,20 @@ function setReference(lat, lon, name, pan){
  
 /* =================== Echantillonnage bilineaire =================== */
 function sample(lat, lon){
-  if(!GRID) return NaN;
-  const {res,latMin,latMax,lonMin,nx,ny,temps}=GRID;
-  if(lat<latMin || lat>latMax) return NaN;
-  let gx=(lon-lonMin)/res; let gy=(latMax-lat)/res;   // row 0 = latMax
-  if(gx<0) gx+=360/res;                                // wrap longitude
-  if(gx>nx-1) gx-=nx; if(gx<0) gx=0;
+  const p=gridPoint(lat,lon);
+  if(!p) return NaN;
+  const {nx,ny,temps,land}=GRID;
+  const {gx,gy}=p;
   const x0=Math.floor(gx), y0=Math.floor(gy);
   const x1=Math.min(x0+1,nx-1), y1=Math.min(y0+1,ny-1);
+  if(land){
+    // Strict: aucun pixel ne doit etre colore si l'interpolation toucherait l'ocean.
+    const idx00=y0*nx+x0, idx10=y0*nx+x1;
+    const idx01=y1*nx+x0, idx11=y1*nx+x1;
+    const land00=land[idx00], land10=land[idx10];
+    const land01=land[idx01], land11=land[idx11];
+    if(land00!==1 || land10!==1 || land01!==1 || land11!==1) return NaN;
+  }
   const fx=gx-x0, fy=gy-y0;
   const v00=temps[y0*nx+x0], v10=temps[y0*nx+x1], v01=temps[y1*nx+x0], v11=temps[y1*nx+x1];
   // moyenne ponderee en ignorant les NaN
@@ -524,7 +545,17 @@ function sample(lat, lon){
   add(v00,(1-fx)*(1-fy)); add(v10,fx*(1-fy)); add(v01,(1-fx)*fy); add(v11,fx*fy);
   return w>0 ? sum/w : NaN;
 }
- 
+
+function gridPoint(lat, lon){
+  if(!GRID) return null;
+  const {res,latMin,latMax,lonMin,nx}=GRID;
+  if(lat<latMin || lat>latMax) return null;
+  let gx=(lon-lonMin)/res; let gy=(latMax-lat)/res;
+  if(gx<0) gx+=360/res;
+  if(gx>nx-1) gx-=nx; if(gx<0) gx=0;
+  return {gx,gy};
+}
+
 /* =================== Rendu heatmap =================== */
 btnHot.addEventListener('click', ()=>toggleMode('hot'));
 btnCold.addEventListener('click', ()=>toggleMode('cold'));
